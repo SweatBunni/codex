@@ -17,18 +17,55 @@ const { generateMod } = require('../services/generator');
 const app = express();
 expressWs(app);
 
-// ── Middleware ────────────────────────────────────────────────────────────────
+// ── Paths ─────────────────────────────────────────────────────
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
+const SESSIONS_DIR = path.join(__dirname, '..', 'data', 'sessions');
+fs.ensureDirSync(SESSIONS_DIR);
+
+// ── Middleware ────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// ── WebSocket sessions ────────────────────────────────────────────────────────
+// ── Session Persistence Helpers ───────────────────────────────
+
+async function saveMessage(sessionId, message) {
+  const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
+
+  let data = [];
+  if (await fs.pathExists(file)) {
+    data = await fs.readJson(file);
+  }
+
+  data.push(message);
+
+  await fs.writeJson(file, data, { spaces: 2 });
+}
+
+async function loadSession(sessionId) {
+  const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
+
+  if (!await fs.pathExists(file)) return [];
+
+  return await fs.readJson(file);
+}
+
+// ── WebSocket sessions ────────────────────────────────────────
 const activeSessions = new Map();
 
-app.ws('/ws/:sessionId', (ws, req) => {
+app.ws('/ws/:sessionId', async (ws, req) => {
   const { sessionId } = req.params;
+
   activeSessions.set(sessionId, ws);
   console.log(`[WS] Session connected: ${sessionId}`);
+
+  // ✅ SEND HISTORY ON CONNECT
+  const history = await loadSession(sessionId);
+
+  ws.send(JSON.stringify({
+    type: 'history',
+    messages: history
+  }));
 
   ws.on('close', () => {
     activeSessions.delete(sessionId);
@@ -41,26 +78,33 @@ app.ws('/ws/:sessionId', (ws, req) => {
   }));
 });
 
+// ── Send + Save messages ──────────────────────────────────────
 function sendToSession(sessionId, data) {
   const ws = activeSessions.get(sessionId);
+
+  // ✅ SAVE EVERY MESSAGE
+  saveMessage(sessionId, data).catch(() => {});
+
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify(data));
   }
 }
 
-// ── API Routes ────────────────────────────────────────────────────────────────
+// ── API Routes ────────────────────────────────────────────────
 
 // Get versions for a loader
 app.get('/api/versions/:loader', async (req, res) => {
   try {
     const { loader } = req.params;
     let versions;
+
     switch (loader.toLowerCase()) {
       case 'forge':    versions = await getForgeVersions(); break;
       case 'fabric':   versions = await getFabricVersions(); break;
       case 'neoforge': versions = await getNeoForgeVersions(); break;
       default: return res.status(400).json({ error: 'Unknown loader' });
     }
+
     res.json({ loader, versions });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -72,78 +116,66 @@ app.post('/api/generate', async (req, res) => {
   const { prompt, loader, mcVersion, loaderVersion, sessionId } = req.body;
 
   if (!prompt || !loader || !mcVersion || !loaderVersion) {
-    return res.status(400).json({ error: 'Missing required fields: prompt, loader, mcVersion, loaderVersion' });
+    return res.status(400).json({ error: 'Missing required fields' });
   }
 
   if (!sessionId) {
-    return res.status(400).json({ error: 'sessionId required for live console' });
+    return res.status(400).json({ error: 'sessionId required' });
   }
 
-  // Respond immediately so the client knows generation started
-  res.json({ status: 'generating', message: 'Mod generation started. Watch the live console.' });
+  res.json({ status: 'generating' });
 
-  // Run generation async, streaming progress via WebSocket
   generateMod(
     { prompt, loader, mcVersion, loaderVersion, sessionId },
     (event) => {
       sendToSession(sessionId, event);
     }
-  ).then(result => {
-    sendToSession(sessionId, {
-      type: 'done',
-      ...result
+  )
+    .then(result => {
+      sendToSession(sessionId, {
+        type: 'done',
+        ...result
+      });
+    })
+    .catch(err => {
+      sendToSession(sessionId, {
+        type: 'error',
+        message: err.message
+      });
     });
-  }).catch(err => {
-    sendToSession(sessionId, {
-      type: 'error',
-      message: err.message
-    });
-  });
 });
 
-// Download generated ZIP
+// Existing ZIP route (kept)
 app.get('/api/download/:zipName', async (req, res) => {
   const { zipName } = req.params;
-  
-  // Basic security: only alphanumeric, dashes, dots, underscores
+
   if (!/^[\w\-\.]+\.zip$/.test(zipName)) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
 
   const zipPath = path.join('/var/codexmc-output', zipName);
-  
+
   if (!await fs.pathExists(zipPath)) {
-    return res.status(404).json({ error: 'File not found or expired' });
+    return res.status(404).json({ error: 'File not found' });
   }
 
   res.download(zipPath, zipName);
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    activeSessions: activeSessions.size,
-    node: process.version,
-    uptime: Math.floor(process.uptime())
-  });
-});
-// ── NEW DOWNLOAD ROUTES (IMPORTANT) ───────────────────────────
+// ── NEW DOWNLOAD ROUTES ───────────────────────────────────────
 
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
-
-// Download source ZIP
+// Source ZIP
 app.get('/download/source/:id', async (req, res) => {
   const file = path.join(WORKSPACE_DIR, req.params.id, 'source.zip');
 
   if (!await fs.pathExists(file)) {
-    return res.status(404).send("Source not found or expired");
+    return res.status(404).send("Source not found");
   }
 
   res.download(file);
 });
 
-// Download built JAR
+// Built JAR
 app.get('/download/jar/:id', async (req, res) => {
   const dir = path.join(WORKSPACE_DIR, req.params.id, 'build', 'libs');
 
@@ -155,29 +187,32 @@ app.get('/download/jar/:id', async (req, res) => {
   const jar = files.find(f => f.endsWith('.jar'));
 
   if (!jar) {
-    return res.status(404).send("No JAR found (build may have failed)");
+    return res.status(404).send("No JAR found");
   }
 
   res.download(path.join(dir, jar));
 });
-// Serve frontend for all other routes (SPA)
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    activeSessions: activeSessions.size,
+    uptime: Math.floor(process.uptime())
+  });
+});
+
+// SPA fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// ── Start server ──────────────────────────────────────────────────────────────
+// ── Start server ──────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
-  console.log('\n╔═══════════════════════════════════╗');
-  console.log('║        CodexMC Server             ║');
-  console.log('╚═══════════════════════════════════╝');
-  console.log(`\n  🌐 Running at http://${HOST}:${PORT}`);
-  console.log(`  📡 WebSocket: ws://${HOST}:${PORT}/ws/:sessionId`);
-  console.log(`  🔑 API Key: ${process.env.ANTHROPIC_API_KEY ? '✅ Set' : '❌ NOT SET'}`);
-  console.log(`  🗂️  Workspace: ${process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces'}`);
-  console.log('\n  Ready to generate Minecraft mods!\n');
+  console.log(`Server running at http://${HOST}:${PORT}`);
 });
 
 module.exports = app;
