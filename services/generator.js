@@ -1,4 +1,4 @@
-/**
+ fix /**
  * CodexMC AI Generation Service
  * Now includes Gradle wrapper template system + auto Java detection
  */
@@ -12,7 +12,7 @@ const { spawn, execSync } = require('child_process');
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
-const TEMPLATE_GRADLE_DIR = '/srv/codex/gradletmp';
+const TEMPLATE_GRADLE_DIR = process.env.TEMPLATE_GRADLE_DIR || '/srv/codex/gradletmp';
 
 // ─────────────────────────────────────────────
 // JAVA AUTO-DETECTION
@@ -181,6 +181,21 @@ function resolveGradleVersion(mcVersion) {
   return '8.1.1';
 }
 
+function getFabricLoomVersion(mcVersion) {
+  const [, majorMinor] = mcVersion.split('.');
+  const versionMap = {
+    '1.21': '1.8-SNAPSHOT',
+    '1.20': '1.7-SNAPSHOT',
+    '1.19': '1.6-SNAPSHOT',
+    '1.18': '1.4-SNAPSHOT',
+    '1.17': '1.2-SNAPSHOT',
+    '1.16': '0.12-SNAPSHOT',
+    default: '1.7-SNAPSHOT'
+  };
+  return versionMap[majorMinor] || versionMap.default;
+}
+
+
 // ─────────────────────────────────────────────
 // THINKING LEVEL CONFIG
 // ─────────────────────────────────────────────
@@ -210,30 +225,100 @@ const THINKING_CONFIGS = {
 // SYSTEM PROMPT
 // ─────────────────────────────────────────────
 
-function buildSystemPrompt(thinkingLevel) {
+function buildSystemPrompt(request, thinkingLevel) {
   const cfg = THINKING_CONFIGS[thinkingLevel] || THINKING_CONFIGS.medium;
+  const loader = request.loader || 'fabric';
+  const mcVersion = request.mcVersion || '1.21.1';
+  const loomVer = loader === 'fabric' ? getFabricLoomVersion(mcVersion) : '';
+  const loaderVer = request.loaderVersion || '';
 
-  return `You are an expert Minecraft mod developer.
+  let loaderInstructions = '';
+  if (loader === 'fabric') {
+    loaderInstructions = `
+CRITICAL FABRIC REQUIREMENTS:
+
+build.gradle MUST start with:
+plugins {
+  id 'fabric-loom' version '${loomVer}'
+  id 'maven-publish'
+}
+
+pluginManagement {
+  repositories {
+    maven { name = 'Fabric' url = 'https://maven.fabricmc.net/' }
+    gradlePluginPortal()
+  }
+}
+
+For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
+
+fabric.mod.json: 
+{
+  "schemaVersion": 1,
+  "id": "${modId}",
+  "version": "1.0.0",
+  "name": "${modName}",
+  "main": "${package}.YourMod",
+  "entrypoints": { "main": ["${package}.YourMod"] },
+  "depends": { "fabricloader": ">=0.14.0", "minecraft": "${mcVersion}", "java": ">=17", "fabric-api": "*" }
+}`;
+  } else if (loader === 'forge') {
+    loaderInstructions = `
+FORGE REQUIREMENTS:
+
+plugins {
+  id 'net.minecraftforge.gradle' version '6.+'
+  id 'java'
+}
+
+For Forge: minecraft_version='${mcVersion}'
+forge_version='${loaderVer || '52.0.29'}'  // Use provided loaderVersion or latest stable`;
+  } else if (loader === 'neoforge') {
+    loaderInstructions = `
+NEOFORGE REQUIREMENTS:
+
+plugins {
+  id 'neoforge'
+}
+
+neoforge_version='${loaderVer || '21.1.77'}'
+minecraft_version='${mcVersion}'`;
+  }
+
+  return `You are an expert Minecraft mod developer. Generate COMPLETE production-ready mods.
 
 ${cfg.extraSystemNote}
+
+${loaderInstructions}
+
+IMPORTANT:
+- Use EXACT plugin versions above. NO other versions or SNAPSHOT unless specified.
+- All files must be COMPLETE and valid.
+- Include all required files: build.gradle, gradle.properties, src/main/.../mod init class, fabric.mod.json/mods.toml/pack.mcmeta
+- Mod ID: lowercase with hyphens
+- Java package: com.yourname.${modId.replace(/-/g,'')}
 
 Return ONLY valid JSON:
 {
   "modName": "ExampleMod",
   "modId": "examplemod",
-  "mcVersion": "1.21.1",
+  "packageName": "com.yourname.examplemod",
+  "mcVersion": "${mcVersion}",
   "files": {
-    "build.gradle": "",
-    "settings.gradle": "",
-    "gradle/wrapper/gradle-wrapper.properties": "",
-    "src/main/java/...": ""
+    "build.gradle": "COMPLETE build script",
+    "gradle.properties": "...",
+    "src/main/resources/fabric.mod.json": "...",
+    "src/main/java/.../ExampleMod.java": "..."
   }
 }`;
 }
 
 function buildUserPrompt(req) {
   return `Create a ${req.loader} mod for Minecraft ${req.mcVersion}.
-Mod request: ${req.prompt}`;
+
+Detailed mod request: ${req.prompt}
+
+Make sure to follow all loader-specific instructions in system prompt exactly.`;
 }
 
 // ─────────────────────────────────────────────
@@ -391,7 +476,7 @@ async function generateMod(request, onProgress) {
   const aiText = await axios.post(OPENROUTER_API, {
     model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
     messages: [
-      { role: 'system', content: buildSystemPrompt(request.thinkingLevel) },
+      { role: 'system', content: buildSystemPrompt(request, request.thinkingLevel) },
       { role: 'user',   content: buildUserPrompt(request) }
     ]
   }, {
@@ -403,7 +488,7 @@ async function generateMod(request, onProgress) {
 
   const modData = extractJSON(aiText.data.choices[0].message.content);
 
-  emit('info', 'Writing files...');
+
   for (const filePath of Object.keys(modData.files)) {
     const fullPath = path.join(workDir, filePath);
     await fs.ensureDir(path.dirname(fullPath));
@@ -411,7 +496,6 @@ async function generateMod(request, onProgress) {
   }
 
   await writeGradleWrapper(workDir, request.mcVersion);
-
   emit('info', 'Building mod...');
   await buildMod(workDir, request.mcVersion, emit);
 
