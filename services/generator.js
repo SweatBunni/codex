@@ -103,7 +103,7 @@ async function generateMod(request, onProgress) {
       throw new Error('OPENROUTER_API_KEY not set');
     }
 
-    emit('ai', `🤖 Calling OpenRouter (Qwen 80B Free)...`);
+    emit('ai', `🤖 Calling OpenRouter (Nemotron 3 Super Free)...`);
 
     const response = await axios.post(
       OPENROUTER_API,
