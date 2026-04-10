@@ -399,6 +399,24 @@ function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed');
 }
 
+function newMod() {
+  state.activeSessionId = null;
+  state.activeConsoleId = null;
+
+  const msgs = document.getElementById('messages');
+  if (msgs) msgs.innerHTML = '';
+
+  const welcome = document.getElementById('welcome-state');
+  if (welcome) welcome.style.display = '';
+
+  document.querySelectorAll('.history-item')
+    .forEach(el => el.classList.remove('active'));
+
+  const inp = document.getElementById('prompt-input');
+  if (inp) { inp.value = ''; autoResize(inp); inp.focus(); }
+}
+
+
 // ════════════════════════════════════════════════════════
 //  WEBSOCKET
 // ════════════════════════════════════════════════════════
