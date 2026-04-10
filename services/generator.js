@@ -1,6 +1,6 @@
 /**
  * CodexMC AI Generation Service
- * Uses Claude claude-sonnet-4-20250514 to generate complete Minecraft mod projects
+ * Now powered by Mistral AI (mistral-large-latest)
  */
 
 const axios = require('axios');
@@ -11,7 +11,7 @@ const archiver = require('archiver');
 const { execFile, spawn } = require('child_process');
 const { getRequiredJdk } = require('./versions');
 
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
+const MISTRAL_API = 'https://api.mistral.ai/v1/chat/completions';
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
 
@@ -56,24 +56,22 @@ Rules:
 
 function buildUserPrompt(request) {
   const { prompt, loader, mcVersion, loaderVersion } = request;
-  return `Create a complete Minecraft ${loader} mod for Minecraft ${mcVersion} using ${loader} ${loaderVersion}.
+  return `Create a complete Minecraft ${loader} mod for Minecraft ${mcVersion} using ${loader} ${loaderVersion || 'latest'}.
 
 Mod Request: ${prompt}
 
 Requirements:
 - Loader: ${loader}
-- Minecraft Version: ${mcVersion}  
-- ${loader} Version: ${loaderVersion}
+- Minecraft Version: ${mcVersion}
 - Make it fully functional and compilable
 - Include all necessary files for a complete Gradle project
 
-Respond ONLY with the JSON structure described. No explanation, no markdown, just the JSON object.`;
+Respond ONLY with the raw JSON object. No explanation, no markdown.`;
 }
 
 // ── Gradle wrapper files ──────────────────────────────────────────────────────
 
 function getGradleWrapperProps(loader, mcVersion) {
-  // Use appropriate Gradle version based on loader/MC version
   const [, , minor] = mcVersion.split('.').map(Number);
   let gradleVersion = '8.8';
   if (minor <= 16) gradleVersion = '7.6.4';
@@ -118,30 +116,30 @@ async function generateMod(request, onProgress) {
   try {
     emit('info', `🚀 Starting mod generation for ${loader} ${mcVersion}`);
     emit('info', `📝 Processing your request...`);
-    emit('ai', `Connecting to Claude claude-sonnet-4-20250514...`);
+    emit('ai', `Connecting to Mistral AI...`);
 
-    // ── Call Claude API ────────────────────────────────────────────────
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey || apiKey === 'your_key_here' || apiKey === 'your_anthropic_api_key_here') {
-      throw new Error('ANTHROPIC_API_KEY not configured. Please set it in your .env file.');
+    const apiKey = process.env.MISTRAL_API_KEY;
+    if (!apiKey || apiKey === 'your_key_here' || apiKey === 'your_mistral_api_key_here') {
+      throw new Error('MISTRAL_API_KEY not configured. Please set it in your .env file.');
     }
 
-    emit('ai', `🤖 Generating mod code with AI...`);
+    emit('ai', `🤖 Generating mod code with Mistral Large...`);
 
     let fullResponse = '';
-    
-    // Use streaming for real-time output
-    const response = await axios.post(ANTHROPIC_API, {
-      model: 'claude-sonnet-4-20250514',
+
+    const response = await axios.post(MISTRAL_API, {
+      model: "mistral-large-latest",
+      temperature: 0.7,
       max_tokens: 8000,
       stream: true,
-      system: buildSystemPrompt(),
-      messages: [{ role: 'user', content: buildUserPrompt(request) }]
+      messages: [
+        { role: "system", content: buildSystemPrompt() },
+        { role: "user", content: buildUserPrompt(request) }
+      ]
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'Authorization': `Bearer ${apiKey}`
       },
       responseType: 'stream',
       timeout: 120000
@@ -153,20 +151,21 @@ async function generateMod(request, onProgress) {
       response.data.on('data', chunk => {
         buffer += chunk.toString();
         const lines = buffer.split('\n');
-        buffer = lines.pop();
+        buffer = lines.pop() || '';
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
+            const dataStr = line.slice(6).trim();
+            if (dataStr === '[DONE]') continue;
             try {
-              const parsed = JSON.parse(data);
-              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-                fullResponse += parsed.delta.text;
-                // Show AI thinking in console
-                const preview = parsed.delta.text.replace(/\n/g, ' ');
-                if (preview.trim()) emit('ai-stream', preview);
+              const parsed = JSON.parse(dataStr);
+              if (parsed.choices?.[0]?.delta?.content) {
+                const text = parsed.choices[0].delta.content;
+                fullResponse += text;
+                const preview = text.replace(/\n/g, ' ').trim();
+                if (preview) emit('ai-stream', preview);
               }
-            } catch {}
+            } catch (e) {}
           }
         }
       });
@@ -174,12 +173,11 @@ async function generateMod(request, onProgress) {
       response.data.on('error', reject);
     });
 
-    emit('ai', `✅ AI generation complete! Parsing mod structure...`);
+    emit('ai', `✅ Mistral generation complete! Parsing mod structure...`);
 
     // ── Parse JSON response ────────────────────────────────────────────
     let modData;
     try {
-      // Strip any accidental markdown wrapping
       const cleaned = fullResponse
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -187,16 +185,11 @@ async function generateMod(request, onProgress) {
         .trim();
       modData = JSON.parse(cleaned);
     } catch (e) {
-      // Try to extract JSON from response
       const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        try {
-          modData = JSON.parse(jsonMatch[0]);
-        } catch {
-          throw new Error('AI returned invalid JSON. Please try again with a clearer description.');
-        }
+        modData = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error('Could not parse AI response. Please try again.');
+        throw new Error('AI returned invalid JSON. Please try again with a clearer description.');
       }
     }
 
@@ -218,21 +211,18 @@ async function generateMod(request, onProgress) {
     const wrapperDir = path.join(workDir, 'gradle', 'wrapper');
     await fs.ensureDir(wrapperDir);
 
-    // gradle-wrapper.properties
     await fs.writeFile(
       path.join(wrapperDir, 'gradle-wrapper.properties'),
       getGradleWrapperProps(loader, mcVersion)
     );
 
-    // gradlew (unix)
     const gradlewPath = path.join(workDir, 'gradlew');
     await fs.writeFile(gradlewPath, GRADLEW_SCRIPT);
     await fs.chmod(gradlewPath, 0o755);
 
-    // gradlew.bat (windows)
     await fs.writeFile(path.join(workDir, 'gradlew.bat'), GRADLEW_BAT);
 
-    // Download actual gradle-wrapper.jar
+    // Download gradle-wrapper.jar
     emit('info', `📦 Downloading gradle-wrapper.jar...`);
     try {
       const jarRes = await axios.get(
@@ -243,7 +233,6 @@ async function generateMod(request, onProgress) {
       emit('info', `✅ gradle-wrapper.jar downloaded`);
     } catch {
       emit('warn', `⚠️ Could not download gradle-wrapper.jar (network). Build may require manual setup.`);
-      // Write empty placeholder
       await fs.writeFile(path.join(wrapperDir, 'gradle-wrapper.jar'), Buffer.alloc(0));
     }
 
@@ -308,7 +297,6 @@ eclipse/
           buildSuccess = true;
           emit('build', `\n✅ Build successful! (exit code 0)`);
           
-          // Find the output JAR
           const buildLibs = path.join(workDir, 'build', 'libs');
           if (await fs.pathExists(buildLibs)) {
             const files = await fs.readdir(buildLibs);
@@ -321,12 +309,10 @@ eclipse/
         } else {
           emit('build', `\n⚠️ Build exited with code ${code}`);
           emit('build', `  The project files are still valid - build may need manual setup`);
-          emit('build', `  Common fix: ensure correct JDK version is installed`);
         }
         resolve();
       });
 
-      // Timeout
       setTimeout(() => {
         gradle.kill();
         emit('build', `⏱️ Build timeout - packaging source files`);
@@ -358,7 +344,6 @@ eclipse/
     emit('success', `  Build: ${buildSuccess ? '✅ Compiled successfully' : '⚠️ Source only (compile manually)'}`);
     if (jarPath) emit('success', `  JAR: Included in download`);
 
-    // Cleanup workspace after packaging
     setTimeout(() => fs.remove(workDir).catch(() => {}), 60000);
 
     return {
@@ -373,7 +358,6 @@ eclipse/
 
   } catch (error) {
     emit('error', `\n❌ Error: ${error.message}`);
-    // Cleanup on error
     await fs.remove(workDir).catch(() => {});
     throw error;
   }
@@ -390,7 +374,6 @@ function findJavaHome(version) {
   for (const c of candidates) {
     if (require('fs').existsSync(path.join(c, 'bin', 'java'))) return c;
   }
-  // Fallback: use system java
   try {
     const which = require('child_process').execSync('which java').toString().trim();
     return which.replace('/bin/java', '');
