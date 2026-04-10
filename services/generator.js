@@ -1,64 +1,61 @@
 /**
  * CodexMC AI Generation Service
- * Fixed: stable JSON parsing + OpenRouter reliability
+ * FULL PRODUCTION VERSION
  */
 
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const archiver = require('archiver');
+const { spawn } = require('child_process');
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 // PROMPTS
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
 
 function buildSystemPrompt() {
   return `
-You are CodexMC, an expert Minecraft mod developer.
+You are an expert Minecraft mod developer.
 
-You MUST return ONLY valid JSON.
+Return ONLY valid JSON.
+No markdown. No backticks. No explanations.
 
-No markdown.
-No backticks.
-No explanations.
+Ensure JSON is COMPLETE and never cut off.
 
-Return exactly this structure:
-
+Structure:
 {
   "modName": "ExampleMod",
   "modId": "examplemod",
-  "description": "What the mod does",
+  "description": "desc",
   "version": "1.0.0",
   "files": {
-    "src/main/java/.../ExampleMod.java": "// java code",
-    "build.gradle": "// gradle file"
+    "build.gradle": "...",
+    "src/main/java/...": "..."
   },
   "gradlewNeeded": true,
-  "jdkRequired": "21"
+  "jdkRequired": "17"
 }
 `;
 }
 
-function buildUserPrompt(request) {
-  const { prompt, loader, mcVersion, loaderVersion } = request;
+function buildUserPrompt(req) {
+  return `Create a ${req.loader} mod for Minecraft ${req.mcVersion}.
 
-  return `Create a complete Minecraft ${loader} mod for Minecraft ${mcVersion} using ${loaderVersion || "latest"}.
+Request: ${req.prompt}
 
-Request: ${prompt}
-
-Return ONLY valid JSON.`;
+Return ONLY JSON.`;
 }
 
-// ─────────────────────────────────────────────────────────────
-// SAFE JSON PARSER (IMPORTANT FIX)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// SAFE JSON FIX (handles truncation)
+// ─────────────────────────────────────────────
 
 function extractJSON(text) {
-  if (!text || typeof text !== "string") {
-    throw new Error("Empty AI response");
-  }
+  if (!text) throw new Error("Empty AI response");
 
   let cleaned = text
     .replace(/```json/g, "")
@@ -66,124 +63,186 @@ function extractJSON(text) {
     .trim();
 
   const start = cleaned.indexOf("{");
-  if (start === -1) {
-    throw new Error("No JSON found in AI response");
-  }
+  if (start === -1) throw new Error("No JSON found");
 
-  let jsonString = cleaned.slice(start);
+  let json = cleaned.slice(start);
 
-  // 🔥 FIX: attempt parse first
   try {
-    return JSON.parse(jsonString);
+    return JSON.parse(json);
   } catch {}
 
-  // 🔥 FIX: auto-repair truncated JSON
   try {
-    let openBraces = (jsonString.match(/{/g) || []).length;
-    let closeBraces = (jsonString.match(/}/g) || []).length;
+    let open = (json.match(/{/g) || []).length;
+    let close = (json.match(/}/g) || []).length;
 
-    // add missing closing braces
-    while (closeBraces < openBraces) {
-      jsonString += "}";
-      closeBraces++;
+    while (close < open) {
+      json += "}";
+      close++;
     }
 
-    return JSON.parse(jsonString);
+    return JSON.parse(json);
   } catch {}
 
-  // 🔥 LAST RESORT: hard cut at last valid brace
-  const lastValidIndex = jsonString.lastIndexOf("}");
-  if (lastValidIndex !== -1) {
-    try {
-      return JSON.parse(jsonString.slice(0, lastValidIndex + 1));
-    } catch {}
+  const last = json.lastIndexOf("}");
+  if (last !== -1) {
+    return JSON.parse(json.slice(0, last + 1));
   }
 
-  throw new Error("Invalid JSON from AI (unrecoverable)");
+  throw new Error("Invalid JSON from AI");
 }
 
-// ─────────────────────────────────────────────────────────────
-// CORE FUNCTION
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// ZIP SOURCE
+// ─────────────────────────────────────────────
 
-async function generateMod(request, onProgress) {
-  const workId = uuidv4();
-  const workDir = path.join(
-    process.env.WORKSPACE_DIR || "/tmp/codexmc-workspaces",
-    workId
-  );
+async function zipDirectory(sourceDir, outPath) {
+  return new Promise((resolve, reject) => {
+    const output = require('fs').createWriteStream(outPath);
+    const archive = archiver('zip');
 
-  const emit = (type, message) => {
-    if (onProgress) onProgress({ type, message, workId });
-  };
+    archive.pipe(output);
+    archive.directory(sourceDir, false);
 
+    output.on('close', resolve);
+    archive.on('error', reject);
+
+    archive.finalize();
+  });
+}
+
+// ─────────────────────────────────────────────
+// BUILD MOD (GRADLE)
+// ─────────────────────────────────────────────
+
+function buildMod(workDir) {
+  return new Promise((resolve, reject) => {
+    const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
+
+    const proc = spawn(cmd, ['build'], {
+      cwd: workDir,
+      shell: true
+    });
+
+    proc.stdout.on('data', d => console.log(d.toString()));
+    proc.stderr.on('data', d => console.error(d.toString()));
+
+    proc.on('close', code => {
+      if (code !== 0) return reject(new Error("Gradle build failed"));
+      resolve();
+    });
+  });
+}
+
+function findJar(workDir) {
+  const dir = path.join(workDir, 'build', 'libs');
+  if (!fs.existsSync(dir)) return null;
+
+  const file = fs.readdirSync(dir).find(f => f.endsWith('.jar'));
+  return file ? path.join(dir, file) : null;
+}
+
+// ─────────────────────────────────────────────
+// OPENROUTER CALL WITH RETRY
+// ─────────────────────────────────────────────
+
+async function callAI(messages, retries = 3) {
   try {
-    emit("info", "🚀 Starting mod generation...");
-
-    if (!process.env.OPENROUTER_API_KEY) {
-      throw new Error("OPENROUTER_API_KEY not set");
-    }
-
-    emit("ai", "🤖 Calling OpenRouter...");
-
-    // ✅ FIX: stream disabled (prevents broken JSON)
-    const response = await axios.post(
+    const res = await axios.post(
       OPENROUTER_API,
       {
-        model: "minimax/minimax-m2.5:free",
+        model: "qwen/qwen2.5-coder-32b-instruct:free",
         temperature: 0.4,
-
-        // ✅ IMPORTANT FIX
+        max_tokens: 12000,
         stream: false,
-
-        max_tokens: 8000,
-
-        messages: [
-          { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: buildUserPrompt(request) }
-        ]
+        messages
       },
       {
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "HTTP-Referer": "https://codexmc.ai",
-          "X-Title": "CodexMC"
-        },
-        timeout: 120000
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`
+        }
       }
     );
 
-    const fullResponse =
-      response.data?.choices?.[0]?.message?.content || "";
+    const data = res.data;
 
-    emit("ai", "✅ AI response received");
+    if (data.error) {
+      throw new Error(data.error.message);
+    }
 
-    // ─────────────────────────────────────────────
-    // FIXED JSON PARSING
-    // ─────────────────────────────────────────────
+    const content = data?.choices?.[0]?.message?.content;
 
-    const modData = extractJSON(fullResponse);
+    if (!content) {
+      throw new Error("Empty AI response");
+    }
 
-    emit("info", "📁 Writing files...");
+    return content;
+  } catch (err) {
+    if (retries <= 0) throw err;
+    await new Promise(r => setTimeout(r, 1500));
+    return callAI(messages, retries - 1);
+  }
+}
+
+// ─────────────────────────────────────────────
+// MAIN FUNCTION
+// ─────────────────────────────────────────────
+
+async function generateMod(request, onProgress) {
+  const workId = uuidv4();
+  const workDir = path.join(WORKSPACE_DIR, workId);
+
+  const emit = (type, msg) => {
+    if (onProgress) onProgress({ type, message: msg, workId });
+  };
+
+  try {
+    emit("info", "🚀 Generating mod...");
 
     await fs.ensureDir(workDir);
 
-    for (const [filePath, content] of Object.entries(modData.files || {})) {
-      const fullPath = path.join(workDir, filePath);
-      await fs.ensureDir(path.dirname(fullPath));
-      await fs.writeFile(fullPath, content, "utf8");
+    const aiText = await callAI([
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: buildUserPrompt(request) }
+    ]);
+
+    emit("ai", "✅ AI response received");
+
+    const modData = extractJSON(aiText);
+
+    emit("info", "📁 Writing files...");
+
+    for (const [file, content] of Object.entries(modData.files || {})) {
+      const full = path.join(workDir, file);
+      await fs.ensureDir(path.dirname(full));
+      await fs.writeFile(full, content, "utf8");
     }
 
-    emit("success", "🎉 Mod generated successfully");
+    // ── ZIP SOURCE
+    const zipPath = path.join(workDir, "source.zip");
+    await zipDirectory(workDir, zipPath);
 
-    setTimeout(() => fs.remove(workDir).catch(() => {}), 60000);
+    // ── BUILD MOD
+    let jarPath = null;
+
+    try {
+      emit("info", "🔨 Building mod...");
+      await buildMod(workDir);
+      jarPath = findJar(workDir);
+    } catch {
+      emit("warn", "Build failed (source still available)");
+    }
+
+    emit("success", "🎉 Done!");
 
     return {
       success: true,
       modName: modData.modName,
       modId: modData.modId,
-      workDir
+      workId,
+      downloads: {
+        source: `/download/source/${workId}`,
+        jar: jarPath ? `/download/jar/${workId}` : null
+      }
     };
   } catch (err) {
     emit("error", err.message);
