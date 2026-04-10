@@ -145,24 +145,27 @@ function findJar(workDir) {
 // OPENROUTER CALL WITH RETRY
 // ─────────────────────────────────────────────
 
-async function callAI(messages, retries = 3) {
-  try {
-    const res = await axios.post(
-      OPENROUTER_API,
-      {
-        model: "qwen/qwen2.5-coder-32b-instruct:free",
-        temperature: 0.4,
-        max_tokens: 12000,
-        stream: false,
-        messages
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`
-        }
-      }
-    );
+const res = await axios.post(
+  OPENROUTER_API,
+  {
+    model: "qwen/qwen2.5-coder-32b-instruct:free",
+    temperature: 0.4,
+    max_tokens: 12000,
+    stream: false,
+    messages
+  },
+  {
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
 
+      // ✅ REQUIRED (THIS FIXES YOUR 400 ERROR)
+      "HTTP-Referer": "https://codexmc.ai", // can be anything
+      "X-Title": "CodexMC"
+    },
+    timeout: 120000
+  }
+);
     const data = res.data;
 
     if (data.error) {
