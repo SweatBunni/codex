@@ -124,13 +124,15 @@ async function writeGradleWrapper(workDir, mcVersion) {
   const wrapperDir = path.join(workDir, 'gradle', 'wrapper');
   await fs.ensureDir(wrapperDir);
 
-  // 1. COPY TEMPLATE FILES FROM VPS
-  const filesToCopy = [
+  // ─────────────────────────────────────────────
+  // COPY REAL WRAPPER FILES
+  // ─────────────────────────────────────────────
+  const files = [
     'gradle-wrapper.jar',
     'gradle-wrapper.properties'
   ];
 
-  for (const file of filesToCopy) {
+  for (const file of files) {
     const src = path.join(TEMPLATE_GRADLE_DIR, 'gradle', 'wrapper', file);
     const dest = path.join(wrapperDir, file);
 
@@ -141,7 +143,9 @@ async function writeGradleWrapper(workDir, mcVersion) {
     await fs.copyFile(src, dest);
   }
 
-  // 2. UPDATE GRADLE VERSION BASED ON MC VERSION
+  // ─────────────────────────────────────────────
+  // UPDATE GRADLE VERSION
+  // ─────────────────────────────────────────────
   let gradleVersion = '8.8';
 
   if (mcVersion?.startsWith('1.21')) gradleVersion = '8.8';
@@ -160,28 +164,31 @@ async function writeGradleWrapper(workDir, mcVersion) {
 
   await fs.writeFile(propsPath, props, 'utf8');
 
-  // 3. CREATE gradlew (Linux)
+  // ─────────────────────────────────────────────
+  // REAL gradlew launcher (FIXES 127 ERROR)
+  // ─────────────────────────────────────────────
   const gradlew = path.join(workDir, 'gradlew');
-  if (!await fs.pathExists(gradlew)) {
-    await fs.writeFile(
-      gradlew,
-`#!/bin/sh
-exec gradle -p "$(dirname "$0")" "$@"
-`
-    );
-    fs.chmodSync(gradlew, 0o755);
-  }
 
-  // 4. CREATE gradlew.bat (Windows)
-  const gradlewBat = path.join(workDir, 'gradlew.bat');
-  if (!await fs.pathExists(gradlewBat)) {
-    await fs.writeFile(
-      gradlewBat,
-`@echo off
-gradle -p %~dp0 %*
+  await fs.writeFile(
+    gradlew,
+`#!/bin/sh
+DIR=$(cd "$(dirname "$0")" && pwd)
+
+exec java -jar "$DIR/gradle/wrapper/gradle-wrapper.jar" "$@"
 `
-    );
-  }
+  );
+
+  fs.chmodSync(gradlew, 0o755);
+
+  const gradlewBat = path.join(workDir, 'gradlew.bat');
+
+  await fs.writeFile(
+    gradlewBat,
+`@echo off
+set DIR=%~dp0
+java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
+`
+  );
 }
 
 // ─────────────────────────────────────────────
