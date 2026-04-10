@@ -1,21 +1,24 @@
 /**
- * CodexMC — Frontend Application
- * Handles: page routing, WebSocket live console, version fetching, mod generation
+ * CodexMC — Frontend App
+ * Features: thinking levels, JAR download, source ZIP download,
+ * WebSocket live console, version management, session history
  */
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════
+
 const state = {
   sessionId: generateUUID(),
   ws: null,
   wsReconnectTimer: null,
   currentLoader: 'forge',
   versionsCache: {},
-  sessions: [],       // history items
-  activeSessionIdx: -1,
   isGenerating: false,
+  activeConsoleId: null,
+  thinkingLevel: 'medium',
 };
 
-// ── UUID ──────────────────────────────────────────────────────────────────────
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
@@ -23,15 +26,15 @@ function generateUUID() {
   });
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  BACKGROUND CANVAS (landing page)
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  BACKGROUND CANVAS
+// ════════════════════════════════════════════════════════
 
 function initCanvas() {
   const canvas = document.getElementById('bg-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  let W, H, particles;
+  let W, H, particles, raf;
 
   function resize() {
     W = canvas.width = window.innerWidth;
@@ -39,34 +42,29 @@ function initCanvas() {
   }
 
   function makeParticles() {
-    particles = Array.from({ length: 80 }, () => ({
+    particles = Array.from({ length: 60 }, () => ({
       x: Math.random() * W,
       y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      r: Math.random() * 1.5 + 0.5,
-      alpha: Math.random() * 0.4 + 0.1
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.2 + 0.4,
+      alpha: Math.random() * 0.35 + 0.05
     }));
   }
 
-  let raf;
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // Grid lines
-    ctx.strokeStyle = 'rgba(30,37,53,0.6)';
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.025)';
     ctx.lineWidth = 1;
-    const gridSize = 60;
-    for (let x = 0; x < W; x += gridSize) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    }
-    for (let y = 0; y < H; y += gridSize) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    }
+    const g = 64;
+    for (let x = 0; x < W; x += g) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += g) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
 
-    // Glow at top center
-    const grad = ctx.createRadialGradient(W/2, 0, 0, W/2, 0, W * 0.6);
-    grad.addColorStop(0, 'rgba(74,222,128,0.07)');
+    // Glow
+    const grad = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.55);
+    grad.addColorStop(0, 'rgba(74,222,128,0.05)');
     grad.addColorStop(1, 'rgba(74,222,128,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
@@ -78,24 +76,23 @@ function initCanvas() {
       if (p.x > W) p.x = 0;
       if (p.y < 0) p.y = H;
       if (p.y > H) p.y = 0;
-
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(74,222,128,${p.alpha})`;
       ctx.fill();
     }
 
-    // Connect close particles
+    // Connections
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const dx = particles[i].x - particles[j].x;
         const dy = particles[i].y - particles[j].y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < 120) {
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 100) {
           ctx.beginPath();
           ctx.moveTo(particles[i].x, particles[i].y);
           ctx.lineTo(particles[j].x, particles[j].y);
-          ctx.strokeStyle = `rgba(74,222,128,${0.06 * (1 - dist/120)})`;
+          ctx.strokeStyle = `rgba(74,222,128,${0.05 * (1 - d / 100)})`;
           ctx.lineWidth = 1;
           ctx.stroke();
         }
@@ -108,25 +105,18 @@ function initCanvas() {
   resize();
   makeParticles();
   draw();
-
-  window.addEventListener('resize', () => {
-    resize();
-    makeParticles();
-  });
-
-  // Stop canvas when on app page
-  return () => cancelAnimationFrame(raf);
+  window.addEventListener('resize', () => { resize(); makeParticles(); });
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  PAGE NAVIGATION
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  NAVIGATION
+// ════════════════════════════════════════════════════════
 
 function showApp() {
   document.getElementById('landing-page').style.display = 'none';
-  const appPage = document.getElementById('app-page');
-  appPage.style.display = 'flex';
-  appPage.classList.add('fade-in');
+  const app = document.getElementById('app-page');
+  app.style.display = 'flex';
+  app.classList.add('fade-in');
   connectWS();
   loadVersions('forge');
 }
@@ -134,27 +124,22 @@ function showApp() {
 function showLanding() {
   document.getElementById('app-page').style.display = 'none';
   document.getElementById('landing-page').style.display = 'block';
-  if (state.ws) {
-    state.ws.close();
-    state.ws = null;
-  }
+  if (state.ws) { state.ws.close(); state.ws = null; }
 }
 
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed');
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 //  WEBSOCKET
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 function connectWS() {
   if (state.ws && state.ws.readyState < 2) return;
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/ws/${state.sessionId}`;
-
-  state.ws = new WebSocket(url);
+  state.ws = new WebSocket(`${proto}//${location.host}/ws/${state.sessionId}`);
 
   state.ws.onopen = () => {
     setStatus('connected', 'Connected');
@@ -166,13 +151,11 @@ function connectWS() {
     state.wsReconnectTimer = setTimeout(connectWS, 3000);
   };
 
-  state.ws.onerror = () => {
-    setStatus('error', 'Connection error');
-  };
+  state.ws.onerror = () => setStatus('error', 'Error');
 
-  state.ws.onmessage = (event) => {
+  state.ws.onmessage = (e) => {
     try {
-      const msg = JSON.parse(event.data);
+      const msg = JSON.parse(e.data);
       handleWsMessage(msg);
     } catch {}
   };
@@ -181,70 +164,73 @@ function connectWS() {
 function handleWsMessage(msg) {
   const { type, message } = msg;
 
-  // Update live console
-  appendConsoleOutput(type, message);
-
+  if (type === 'history') return;
+  if (type === 'connected') return;
   if (type === 'done') {
     onGenerationDone(msg);
-  } else if (type === 'error') {
-    onGenerationError(message);
+    return;
   }
+  if (type === 'error') {
+    onGenerationError(message);
+    return;
+  }
+  if (type === 'thinking_start') {
+    showThinkingIndicator(msg.level);
+    return;
+  }
+  if (type === 'thinking_end') {
+    hideThinkingIndicator();
+    return;
+  }
+
+  appendConsoleOutput(type, message);
 }
 
-function setStatus(state_, text) {
+function setStatus(s, text) {
   const dot = document.getElementById('status-dot');
   const label = document.getElementById('status-text');
-  dot.className = 'status-dot ' + state_;
-  label.textContent = text;
+  if (dot) dot.className = 'status-dot ' + s;
+  if (label) label.textContent = text;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 //  VERSION LOADING
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 async function loadVersions(loader) {
   const select = document.getElementById('version-select');
   if (!select) return;
 
   if (state.versionsCache[loader]) {
-    populateVersionSelect(loader, state.versionsCache[loader]);
+    populateVersions(loader, state.versionsCache[loader]);
     return;
   }
 
-  select.innerHTML = '<option value="">Loading versions...</option>';
-
-  // Show spinner
-  select.parentElement.insertAdjacentHTML('beforeend',
-    '<div class="loader-loader"><div class="spinner"></div>Fetching versions...</div>'
-  );
+  select.innerHTML = '<option value="">Loading...</option>';
 
   try {
     const res = await fetch(`/api/versions/${loader}`);
     const data = await res.json();
     state.versionsCache[loader] = data.versions;
-    populateVersionSelect(loader, data.versions);
-  } catch (e) {
+    populateVersions(loader, data.versions);
+  } catch {
     select.innerHTML = '<option value="">Failed to load</option>';
-    console.error('Version fetch error:', e);
-  } finally {
-    const loader_el = select.parentElement.querySelector('.loader-loader');
-    if (loader_el) loader_el.remove();
   }
 }
 
-function populateVersionSelect(loader, versions) {
+function populateVersions(loader, versions) {
   const select = document.getElementById('version-select');
   select.innerHTML = '';
 
-  if (!versions || versions.length === 0) {
-    select.innerHTML = '<option value="">No versions found</option>';
+  if (!versions || !versions.length) {
+    select.innerHTML = '<option value="">No versions</option>';
     return;
   }
 
   versions.forEach((v, i) => {
+    const lv = v.recommended || v.loaderVersion || v.forgeVersions?.[0] || v.neoforgeVersions?.[0] || '';
     const opt = document.createElement('option');
-    const loaderVersion = v.recommended || v.loaderVersion || v.forgeVersions?.[0] || v.neoforgeVersions?.[0] || '';
-    opt.value = JSON.stringify({ mcVersion: v.mcVersion, loaderVersion });
+    opt.value = JSON.stringify({ mcVersion: v.mcVersion, loaderVersion: lv });
     opt.textContent = `MC ${v.mcVersion}`;
     if (i === 0) opt.selected = true;
     select.appendChild(opt);
@@ -258,29 +244,74 @@ function onLoaderChange() {
 }
 
 function getSelectedVersion() {
-  const select = document.getElementById('version-select');
-  if (!select.value) return null;
-  try { return JSON.parse(select.value); } catch { return null; }
+  const v = document.getElementById('version-select')?.value;
+  if (!v) return null;
+  try { return JSON.parse(v); } catch { return null; }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  THINKING LEVEL
+// ════════════════════════════════════════════════════════
+
+function onThinkingChange() {
+  const level = document.getElementById('thinking-select')?.value || 'medium';
+  state.thinkingLevel = level;
+
+  const hint = document.getElementById('thinking-hint');
+  if (!hint) return;
+
+  const labels = {
+    low:    '⚡ Low thinking — Fast generation mode',
+    medium: '🧩 Medium thinking — Extended reasoning enabled',
+    high:   '🧠 High thinking — Deep chain-of-thought active',
+  };
+
+  hint.textContent = labels[level] || labels.medium;
+  hint.className = `thinking-hint ${level}`;
+}
+
+// ════════════════════════════════════════════════════════
+//  THINKING INDICATOR (UI)
+// ════════════════════════════════════════════════════════
+
+function showThinkingIndicator(level) {
+  if (!state.activeConsoleId) return;
+  const output = document.getElementById('output-' + state.activeConsoleId);
+  if (!output) return;
+
+  const div = document.createElement('div');
+  div.id = 'thinking-indicator-' + state.activeConsoleId;
+  div.className = 'thinking-indicator';
+  div.innerHTML = `
+    <div class="thinking-spinner"></div>
+    <span class="thinking-text">🧠 AI is reasoning deeply... (${level} thinking)</span>
+  `;
+  output.parentElement.insertBefore(div, output);
+}
+
+function hideThinkingIndicator() {
+  if (!state.activeConsoleId) return;
+  const el = document.getElementById('thinking-indicator-' + state.activeConsoleId);
+  if (el) el.remove();
+}
+
+// ════════════════════════════════════════════════════════
 //  MOD GENERATION
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 async function sendPrompt() {
   if (state.isGenerating) return;
 
   const promptInput = document.getElementById('prompt-input');
   const prompt = promptInput.value.trim();
-  if (!prompt) {
-    promptInput.focus();
-    return;
-  }
+  if (!prompt) { promptInput.focus(); return; }
 
   const loader = document.getElementById('loader-select').value;
+  const thinkingLevel = document.getElementById('thinking-select').value;
   const versionData = getSelectedVersion();
+
   if (!versionData) {
-    alert('Please wait for versions to load and select a Minecraft version.');
+    alert('Please wait for versions to load.');
     return;
   }
 
@@ -290,25 +321,19 @@ async function sendPrompt() {
   const welcome = document.getElementById('welcome-state');
   if (welcome) welcome.style.display = 'none';
 
-  // Add user message
-  addUserMessage(prompt, loader, mcVersion, loaderVersion);
+  // Render user bubble
+  addUserMessage(prompt, loader, mcVersion, thinkingLevel);
 
-  // Clear input
   promptInput.value = '';
-  promptInput.style.height = 'auto';
+  autoResize(promptInput);
 
-  // Disable inputs
   setGenerating(true);
 
-  // Create console card in messages
-  const consoleId = 'console-' + Date.now();
-  addConsoleMessage(consoleId, loader, mcVersion);
-
-  // Ensure WS connected
-  if (!state.ws || state.ws.readyState > 1) connectWS();
-
-  // Add to history
+  const consoleId = 'c-' + Date.now();
+  addConsoleMessage(consoleId, loader, mcVersion, thinkingLevel);
   addHistoryItem(prompt, loader, mcVersion, consoleId);
+
+  if (!state.ws || state.ws.readyState > 1) connectWS();
 
   try {
     const res = await fetch('/api/generate', {
@@ -319,7 +344,8 @@ async function sendPrompt() {
         loader,
         mcVersion,
         loaderVersion,
-        sessionId: state.sessionId
+        thinkingLevel,
+        sessionId: state.sessionId,
       })
     });
 
@@ -328,7 +354,6 @@ async function sendPrompt() {
       throw new Error(err.error || 'Server error');
     }
 
-    // Generation is now streaming via WS
     updateConsoleStatus(consoleId, 'running');
 
   } catch (err) {
@@ -338,143 +363,185 @@ async function sendPrompt() {
   }
 }
 
-// Track active console
-let activeConsoleId = null;
+// ════════════════════════════════════════════════════════
+//  MESSAGE RENDERERS
+// ════════════════════════════════════════════════════════
 
-function addUserMessage(prompt, loader, mcVersion, loaderVersion) {
+function addUserMessage(prompt, loader, mcVersion, thinking) {
   const msgs = document.getElementById('messages');
-  const loaderEmoji = { forge: '🔥', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
+  const loaderLabel = { forge: '⚙️ Forge', fabric: '🪡 Fabric', neoforge: '✨ NeoForge' }[loader] || loader;
+  const thinkLabel = { low: '⚡ Low', medium: '🧩 Medium', high: '🧠 High' }[thinking] || thinking;
 
   const div = document.createElement('div');
-  div.className = 'message-user';
+  div.className = 'msg-user';
   div.innerHTML = `
-    <div class="message-user-bubble">
-      <div style="font-size:0.78rem;font-family:var(--font-mono);color:var(--text-muted);margin-bottom:6px">
-        ${loaderEmoji} ${loader.toUpperCase()} · MC ${mcVersion}
-      </div>
+    <div class="msg-user-bubble">
+      <div class="msg-user-meta">${loaderLabel} · MC ${mcVersion} · ${thinkLabel} thinking</div>
       ${escapeHtml(prompt)}
     </div>`;
   msgs.appendChild(div);
-  scrollToBottom();
+  scrollBottom();
 }
 
-function addConsoleMessage(consoleId, loader, mcVersion) {
+function addConsoleMessage(consoleId, loader, mcVersion, thinking) {
   const msgs = document.getElementById('messages');
-  activeConsoleId = consoleId;
+  state.activeConsoleId = consoleId;
+
+  const thinkBadge = {
+    low:    '<span class="thinking-badge-inline thinking-low-badge">⚡ LOW</span>',
+    medium: '<span class="thinking-badge-inline thinking-med-badge">🧩 MED</span>',
+    high:   '<span class="thinking-badge-inline thinking-high-badge">🧠 HIGH</span>',
+  }[thinking] || '';
 
   const div = document.createElement('div');
-  div.className = 'message-ai';
+  div.className = 'msg-ai';
   div.id = 'msg-' + consoleId;
   div.innerHTML = `
-    <div class="message-ai-header">
+    <div class="msg-ai-header">
       <div class="ai-avatar">AI</div>
-      <div class="ai-label">CodexMC Generator</div>
-      <div class="message-info">
+      <div class="ai-name">CodexMC Generator ${thinkBadge}</div>
+      <div class="ai-status" id="ai-status-${consoleId}">
         <div class="generating-dots"><span></span><span></span><span></span></div>
       </div>
     </div>
-    <div class="console-card" id="${consoleId}">
-      <div class="console-header">
+    <div class="console-card">
+      <div class="console-titlebar">
         <div class="console-dots">
           <div class="console-dot" style="background:#ff5f57"></div>
           <div class="console-dot" style="background:#ffbd2e"></div>
           <div class="console-dot" style="background:#28c840"></div>
         </div>
-        <span class="console-title">codexmc — ${loader} ${mcVersion}</span>
+        <span class="console-label">codexmc — ${loader} MC ${mcVersion}</span>
         <span class="console-status running" id="status-${consoleId}">⏳ Generating</span>
       </div>
       <div class="console-output" id="output-${consoleId}">
-        <span class="console-line type-info">Waiting for AI...</span>
+        <span class="console-line type-info">Connecting to AI...</span>
       </div>
     </div>
     <div id="download-area-${consoleId}"></div>
   `;
   msgs.appendChild(div);
-  scrollToBottom();
+  scrollBottom();
 }
 
 function appendConsoleOutput(type, message) {
-  if (!activeConsoleId) return;
-  const output = document.getElementById('output-' + activeConsoleId);
+  if (!state.activeConsoleId) return;
+  const output = document.getElementById('output-' + state.activeConsoleId);
   if (!output) return;
 
-  // Remove "waiting" placeholder
   const waiting = output.querySelector('.type-info');
-  if (waiting && waiting.textContent === 'Waiting for AI...') waiting.remove();
+  if (waiting && waiting.textContent === 'Connecting to AI...') waiting.remove();
 
   if (!message) return;
 
-  const lines = String(message).split('\n');
-  for (const line of lines) {
-    if (!line) continue;
+  String(message).split('\n').forEach(line => {
+    if (!line.trim()) return;
     const span = document.createElement('span');
     span.className = `console-line type-${type}`;
     span.textContent = line;
     output.appendChild(span);
     output.appendChild(document.createTextNode('\n'));
-  }
+  });
 
-  // Auto-scroll console
   output.scrollTop = output.scrollHeight;
-  scrollToBottom();
+  scrollBottom();
 }
 
 function updateConsoleStatus(consoleId, status) {
   const el = document.getElementById('status-' + consoleId);
   if (!el) return;
   el.className = 'console-status ' + status;
-  el.textContent = status === 'running' ? '⏳ Generating' :
-                   status === 'done'    ? '✅ Complete' :
-                   status === 'error'   ? '❌ Error' : status;
+  el.textContent =
+    status === 'running' ? '⏳ Generating' :
+    status === 'done'    ? '✅ Complete'   :
+    status === 'error'   ? '❌ Error'      : status;
 }
 
+// ════════════════════════════════════════════════════════
+//  GENERATION DONE → SHOW DOWNLOAD CARDS
+// ════════════════════════════════════════════════════════
+
 function onGenerationDone(result) {
-  const { zipName, modName, buildSuccess } = result;
+  const { modName, workId, buildSuccess, downloads, zipName } = result;
 
-  updateConsoleStatus(activeConsoleId, 'done');
+  hideThinkingIndicator();
+  updateConsoleStatus(state.activeConsoleId, 'done');
 
-  // Update generating dots → checkmark
-  const msgDiv = document.getElementById('msg-' + activeConsoleId);
-  if (msgDiv) {
-    const info = msgDiv.querySelector('.message-info');
-    if (info) info.innerHTML = `<span style="color:var(--accent);font-size:0.82rem">✅ Done</span>`;
+  // Update status chip
+  const statusEl = document.getElementById('ai-status-' + state.activeConsoleId);
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--green);font-size:12px;font-family:var(--font-mono)">✅ Done</span>`;
+
+  // Build download area
+  const dlArea = document.getElementById('download-area-' + state.activeConsoleId);
+  if (!dlArea) { setGenerating(false); return; }
+
+  // Determine download URLs
+  let jarUrl = null;
+  let sourceUrl = null;
+
+  if (downloads) {
+    jarUrl = downloads.jar || null;
+    sourceUrl = downloads.source || null;
+  } else if (zipName) {
+    // legacy fallback
+    sourceUrl = `/api/download/${encodeURIComponent(zipName)}`;
   }
 
-  // Show download card
-  if (zipName && activeConsoleId) {
-    const dlArea = document.getElementById('download-area-' + activeConsoleId);
-    if (dlArea) {
-      dlArea.innerHTML = `
-        <div class="download-card">
-          <div class="download-info">
-            <h4>🎉 ${escapeHtml(modName || 'Your mod')} is ready!</h4>
-            <p>${buildSuccess ? '✅ Compiled JAR included' : '📁 Source files (build manually)'} · ${escapeHtml(zipName)}</p>
-          </div>
-          <a class="download-btn" href="/api/download/${encodeURIComponent(zipName)}" download>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Project
-          </a>
-        </div>`;
-    }
+  if (workId) {
+    jarUrl = jarUrl || `/download/jar/${workId}`;
+    sourceUrl = sourceUrl || `/download/source/${workId}`;
   }
+
+  const jarHtml = jarUrl
+    ? `<a class="dl-btn dl-btn-jar" href="${escapeHtml(jarUrl)}" download>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download .jar
+      </a>`
+    : `<span class="dl-btn dl-btn-source" style="opacity:0.5;cursor:not-allowed" title="Build failed — source available instead">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Build failed
+      </span>`;
+
+  const sourceHtml = sourceUrl
+    ? `<a class="dl-btn dl-btn-source" href="${escapeHtml(sourceUrl)}" download>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Source (.zip)
+      </a>`
+    : '';
+
+  const buildNote = buildSuccess
+    ? '✅ Compiled JAR + full source ready'
+    : '⚠️ JAR build failed — source files ready';
+
+  dlArea.innerHTML = `
+    <div class="download-area">
+      <div class="download-card">
+        <div class="download-card-header">
+          <div class="download-card-title">🎉 ${escapeHtml(modName || 'Your Mod')} is ready!</div>
+          <div class="download-card-meta">${buildNote}</div>
+        </div>
+        <div class="download-buttons">
+          ${jarHtml}
+          ${sourceHtml}
+        </div>
+      </div>
+    </div>`;
 
   setGenerating(false);
-  scrollToBottom();
+  scrollBottom();
 
-  // Update title
   if (modName) {
-    document.getElementById('topbar-title').textContent = `CodexMC — ${modName}`;
+    document.getElementById('topbar-title').textContent = modName;
   }
 }
 
 function onGenerationError(message) {
-  updateConsoleStatus(activeConsoleId, 'error');
+  hideThinkingIndicator();
+  updateConsoleStatus(state.activeConsoleId, 'error');
+  appendConsoleOutput('error', `❌ ${message}`);
 
-  const msgDiv = document.getElementById('msg-' + activeConsoleId);
-  if (msgDiv) {
-    const info = msgDiv.querySelector('.message-info');
-    if (info) info.innerHTML = `<span style="color:var(--red);font-size:0.82rem">❌ Failed</span>`;
-  }
+  const statusEl = document.getElementById('ai-status-' + state.activeConsoleId);
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">❌ Failed</span>`;
 
   setGenerating(false);
 }
@@ -482,73 +549,68 @@ function onGenerationError(message) {
 function setGenerating(val) {
   state.isGenerating = val;
   const btn = document.getElementById('send-btn');
-  const input = document.getElementById('prompt-input');
+  const inp = document.getElementById('prompt-input');
   if (btn) btn.disabled = val;
-  if (input) input.disabled = val;
+  if (inp) inp.disabled = val;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 //  HISTORY
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 function addHistoryItem(prompt, loader, mcVersion, consoleId) {
   const history = document.getElementById('chat-history');
   const empty = history.querySelector('.history-empty');
   if (empty) empty.remove();
 
-  const loaderIcon = { forge: '🔥', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
+  const icon = { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
+
+  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
 
   const item = document.createElement('div');
   item.className = 'history-item active';
-  item.dataset.consoleId = consoleId;
   item.innerHTML = `
-    <div class="history-item-icon">${loaderIcon}</div>
-    <div class="history-item-text">
-      <div class="history-item-title">${escapeHtml(prompt.slice(0, 40))}${prompt.length > 40 ? '…' : ''}</div>
+    <div class="history-item-icon">${icon}</div>
+    <div>
+      <div class="history-item-title">${escapeHtml(prompt.slice(0, 38))}${prompt.length > 38 ? '…' : ''}</div>
       <div class="history-item-meta">${loader} · MC ${mcVersion}</div>
     </div>`;
-
   item.onclick = () => {
     document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
     item.classList.add('active');
-    const el = document.getElementById('msg-' + consoleId);
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('msg-' + consoleId)?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  // Mark previous items as inactive
-  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
 
   history.insertBefore(item, history.firstChild);
 }
 
 function newSession() {
-  // Reset conversation
   document.getElementById('messages').innerHTML = '';
-  document.getElementById('welcome-state').style.display = 'flex';
+  const welcome = document.getElementById('welcome-state');
+  if (welcome) welcome.style.display = 'flex';
   document.getElementById('prompt-input').value = '';
-  document.getElementById('topbar-title').textContent = 'CodexMC — Mod Generator';
+  document.getElementById('topbar-title').textContent = 'Mod Generator';
 
-  // New session ID
   state.sessionId = generateUUID();
-  activeConsoleId = null;
+  state.activeConsoleId = null;
   state.isGenerating = false;
 
-  document.getElementById('send-btn').disabled = false;
-  document.getElementById('prompt-input').disabled = false;
+  const btn = document.getElementById('send-btn');
+  const inp = document.getElementById('prompt-input');
+  if (btn) btn.disabled = false;
+  if (inp) inp.disabled = false;
 
-  // Reconnect WS with new session
   if (state.ws) state.ws.close();
   setTimeout(connectWS, 100);
 
-  // Deselect history items
   document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  UTILITY
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  UTILITIES
+// ════════════════════════════════════════════════════════
 
-function scrollToBottom() {
+function scrollBottom() {
   const area = document.getElementById('conversation-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
@@ -574,17 +636,17 @@ function autoResize(el) {
 }
 
 function useExample(btn) {
-  const input = document.getElementById('prompt-input');
-  input.value = btn.textContent;
-  autoResize(input);
-  input.focus();
+  const inp = document.getElementById('prompt-input');
+  inp.value = btn.textContent;
+  autoResize(inp);
+  inp.focus();
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  LANDING PAGE TERMINAL ANIMATION
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  LANDING TERMINAL ANIMATION
+// ════════════════════════════════════════════════════════
 
-function animateTerminalPreview() {
+function animateTerminal() {
   const body = document.getElementById('terminal-preview-body');
   if (!body) return;
 
@@ -594,26 +656,37 @@ function animateTerminalPreview() {
   if (cursor) cursor.style.display = 'none';
 
   let i = 0;
-  function showNext() {
+  function next() {
     if (i < lines.length) {
       lines[i].style.opacity = '1';
       lines[i].style.transition = 'opacity 0.1s';
       i++;
-      const delay = i === 1 ? 300 : i < 4 ? 600 : i < 8 ? 400 : 800;
-      setTimeout(showNext, delay);
+      const delay = i === 1 ? 400 : i < 4 ? 700 : i < 8 ? 450 : 900;
+      setTimeout(next, delay);
     } else {
       if (cursor) cursor.style.display = 'inline-block';
     }
   }
-
-  setTimeout(showNext, 800);
+  setTimeout(next, 800);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 //  INIT
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
   initCanvas();
-  animateTerminalPreview();
+  animateTerminal();
+
+  // Wire thinking select
+  const thinkingSelect = document.getElementById('thinking-select');
+  if (thinkingSelect) {
+    thinkingSelect.addEventListener('change', onThinkingChange);
+  }
+
+  // Wire loader select
+  const loaderSelect = document.getElementById('loader-select');
+  if (loaderSelect) {
+    loaderSelect.addEventListener('change', onLoaderChange);
+  }
 });

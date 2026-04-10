@@ -1,141 +1,53 @@
-# CodexMC 🎮
+# CodexMC — AI Minecraft Mod Generator
 
-> AI-powered Minecraft mod generator. Describe your mod, pick your loader & version, and get back a fully compilable Gradle project with the JAR built.
+AI-powered Minecraft mod generator. Describe your mod idea, pick a loader + version + thinking level, and CodexMC generates complete Java code, compiles it into a `.jar`, and packages the full source as a `.zip`.
 
 ## Features
 
-- **3 Mod Loaders** — Forge, Fabric, NeoForge
-- **50+ MC Versions** — Dynamically fetched from official APIs
-- **Live Console** — WebSocket streaming shows every step of AI generation and Gradle build
-- **Compiled JARs** — Server builds the project with the correct JDK (8/17/21)
-- **Full Project** — `build.gradle`, `gradlew`, `gradlew.bat`, all wrapper files included
-- **ChatGPT-style UI** — Sidebar history, new mod button, clean dark theme
-- **Claude claude-sonnet-4-20250514** — Best-in-class AI for code generation
+- 🤖 **DeepSeek R1** — Best free reasoning model via OpenRouter (no paid API needed)
+- 🧠 **3 Thinking Levels** — Low (fast), Medium (balanced), High (deep chain-of-thought)
+- 📦 **Download Compiled JAR** — Real `.jar` ready to drop into your mods folder
+- 🗜️ **Download Source ZIP** — Full Gradle project, open in any IDE
+- 📡 **Live Console** — WebSocket-streamed build output in real time
+- ⚙️ **Forge · Fabric · NeoForge** — All major loaders with correct configs per MC version
+- 🔢 **50+ MC Versions** — Fetched live from official loader APIs
 
-## Quick Start (VPS)
-
-### 1. Clone & Install
+## Setup
 
 ```bash
-git clone https://github.com/youruser/codexmc.git
-cd codexmc
-npm run setup
-```
+# 1. Install dependencies
+npm install
 
-The setup script will:
-- Install OpenJDK 8, 17, 21 via apt
-- Attempt JDK 25 early access download
-- Create workspace directories
-- Install npm dependencies
-- Generate `.env` file
+# 2. Copy environment config
+cp .env.example .env
 
-### 2. Configure
+# 3. Add your OpenRouter key (free at openrouter.ai)
+# Edit .env: OPENROUTER_API_KEY=your_key_here
 
-```bash
-nano .env
-```
+# 4. (Optional) Run setup to install JDKs for building
+node scripts/setup.js
 
-Set your Anthropic API key:
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### 3. Start
-
-```bash
+# 5. Start the server
 npm start
 ```
 
-Visit `http://your-server:3000`
+## Environment
 
-### Production (PM2)
+| Variable | Description |
+|---|---|
+| `OPENROUTER_API_KEY` | Your free OpenRouter key |
+| `PORT` | Server port (default: 3000) |
+| `WORKSPACE_DIR` | Where build projects are stored |
+| `JDK_17_PATH` | Path to JDK 17 (needed for MC 1.17+) |
 
-```bash
-npm install -g pm2
-pm2 start src/server.js --name codexmc
-pm2 save
-pm2 startup
-```
+## AI Model
 
-### Nginx Reverse Proxy
+Uses `deepseek/deepseek-r1:free` via OpenRouter — completely free, no usage limits on the free tier for reasonable usage. This is DeepSeek's reasoning model with chain-of-thought capabilities.
 
-```nginx
-server {
-    listen 80;
-    server_name codexmc.yourdomain.com;
+## Thinking Levels
 
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_read_timeout 300s;
-    }
-}
-```
-
-## Architecture
-
-```
-codexmc/
-├── src/
-│   └── server.js          # Express + WebSocket server
-├── services/
-│   ├── generator.js        # Claude API + Gradle build runner
-│   └── versions.js         # Forge/Fabric/NeoForge version fetcher
-├── public/
-│   ├── index.html          # Full SPA (landing + app)
-│   ├── style.css           # Dark gaming aesthetic
-│   └── app.js              # Frontend logic
-├── scripts/
-│   └── setup.js            # VPS setup script
-├── package.json
-└── .env.example
-```
-
-## API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/versions/:loader` | Get MC versions for loader |
-| POST | `/api/generate` | Start mod generation (async) |
-| GET | `/api/download/:zipName` | Download generated ZIP |
-| GET | `/api/health` | Server health check |
-| WS | `/ws/:sessionId` | Live console stream |
-
-## Supported Loaders
-
-### Forge
-- MC 1.7.10 → 1.21.x
-- JDK 8 (1.7–1.16), JDK 17 (1.17–1.20), JDK 21 (1.21+)
-- ForgeGradle 5/6
-
-### Fabric
-- MC 1.14 → 1.21.x
-- JDK 17/21
-- Loom 1.x, Yarn mappings, Fabric API
-
-### NeoForge
-- MC 1.20.2 → 1.21.x
-- JDK 21
-- NeoGradle / ModDevGradle
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | **Required.** Your Anthropic API key |
-| `PORT` | `3000` | Server port |
-| `HOST` | `0.0.0.0` | Bind address |
-| `WORKSPACE_DIR` | `/tmp/codexmc-workspaces` | Temp build directory |
-| `MAX_CONCURRENT_BUILDS` | `3` | Parallel build limit |
-| `BUILD_TIMEOUT_MS` | `300000` | 5 min build timeout |
-| `JDK_8_PATH` | auto | Path to JDK 8 home |
-| `JDK_17_PATH` | auto | Path to JDK 17 home |
-| `JDK_21_PATH` | auto | Path to JDK 21 home |
-
-## License
-
-MIT
+| Level | Tokens | Time | Best For |
+|---|---|---|---|
+| Low ⚡ | 4,000 | ~30s | Simple items/blocks |
+| Medium 🧩 | 8,000 | ~60s | Complex mechanics |
+| High 🧠 | 16,000 | ~120s | Full mod systems |

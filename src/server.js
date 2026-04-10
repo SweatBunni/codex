@@ -1,6 +1,7 @@
 /**
  * CodexMC Server
- * Express + WebSocket server for real-time mod generation
+ * Express + WebSocket — real-time mod generation
+ * Model: deepseek/deepseek-r1:free via OpenRouter
  */
 
 require('dotenv').config();
@@ -23,11 +24,12 @@ expressWs(app);
 // ─────────────────────────────────────────────
 
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
-const SESSIONS_DIR = path.join(__dirname, "..", "data", "sessions");
+const SESSIONS_DIR = path.join(__dirname, '..', 'data', 'sessions');
 fs.ensureDirSync(SESSIONS_DIR);
+fs.ensureDirSync(WORKSPACE_DIR);
 
 // ─────────────────────────────────────────────
-// CHAT STORAGE (FIXED - SINGLE SYSTEM)
+// SESSION STORAGE
 // ─────────────────────────────────────────────
 
 async function loadChat(sessionId) {
@@ -38,17 +40,9 @@ async function loadChat(sessionId) {
 
 async function saveChat(sessionId, message) {
   const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
-
   let data = [];
-  if (await fs.pathExists(file)) {
-    data = await fs.readJson(file);
-  }
-
-  data.push({
-    ...message,
-    timestamp: Date.now()
-  });
-
+  if (await fs.pathExists(file)) data = await fs.readJson(file);
+  data.push({ ...message, timestamp: Date.now() });
   await fs.writeJson(file, data, { spaces: 2 });
 }
 
@@ -68,23 +62,12 @@ const activeSessions = new Map();
 
 app.ws('/ws/:sessionId', async (ws, req) => {
   const { sessionId } = req.params;
-
   activeSessions.set(sessionId, ws);
-
   console.log(`[WS] Connected: ${sessionId}`);
 
-  // send chat history on reconnect
   const history = await loadChat(sessionId);
-
-  ws.send(JSON.stringify({
-    type: "history",
-    messages: history
-  }));
-
-  ws.send(JSON.stringify({
-    type: "connected",
-    message: "🟢 Connected to CodexMC"
-  }));
+  ws.send(JSON.stringify({ type: 'history', messages: history }));
+  ws.send(JSON.stringify({ type: 'connected', message: '🟢 Connected to CodexMC' }));
 
   ws.on('close', () => {
     activeSessions.delete(sessionId);
@@ -92,16 +75,9 @@ app.ws('/ws/:sessionId', async (ws, req) => {
   });
 });
 
-// ─────────────────────────────────────────────
-// SEND + SAVE MESSAGE (FIXED)
-// ─────────────────────────────────────────────
-
 function sendToSession(sessionId, data) {
-  const ws = activeSessions.get(sessionId);
-
-  // save EVERY message
   saveChat(sessionId, data).catch(() => {});
-
+  const ws = activeSessions.get(sessionId);
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify(data));
   }
@@ -115,15 +91,12 @@ app.get('/api/versions/:loader', async (req, res) => {
   try {
     const { loader } = req.params;
     let versions;
-
     switch (loader.toLowerCase()) {
-      case 'forge': versions = await getForgeVersions(); break;
-      case 'fabric': versions = await getFabricVersions(); break;
+      case 'forge':    versions = await getForgeVersions(); break;
+      case 'fabric':   versions = await getFabricVersions(); break;
       case 'neoforge': versions = await getNeoForgeVersions(); break;
-      default:
-        return res.status(400).json({ error: 'Unknown loader' });
+      default: return res.status(400).json({ error: 'Unknown loader' });
     }
-
     res.json({ loader, versions });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -135,95 +108,74 @@ app.get('/api/versions/:loader', async (req, res) => {
 // ─────────────────────────────────────────────
 
 app.post('/api/generate', async (req, res) => {
-  let { prompt, loader, mcVersion, loaderVersion, sessionId } = req.body;
+  let { prompt, loader, mcVersion, loaderVersion, thinkingLevel, sessionId } = req.body;
 
-  console.log("REQUEST:", req.body);
+  console.log('[Generate]', { loader, mcVersion, thinkingLevel, prompt: prompt?.slice(0, 60) });
 
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-  }
-
-  if (!loaderVersion) {
-    loaderVersion = "latest";
+  if (!sessionId) sessionId = crypto.randomUUID();
+  if (!loaderVersion) loaderVersion = 'latest';
+  if (!thinkingLevel || !['low', 'medium', 'high'].includes(thinkingLevel)) {
+    thinkingLevel = 'medium';
   }
 
   if (!prompt || !loader || !mcVersion) {
-    return res.status(400).json({
-      error: 'Missing required fields',
-      required: ['prompt', 'loader', 'mcVersion']
-    });
+    return res.status(400).json({ error: 'Missing required fields: prompt, loader, mcVersion' });
   }
 
-  res.json({
-    status: 'generating',
-    sessionId
-  });
+  // Respond immediately — generation streams via WS
+  res.json({ status: 'generating', sessionId });
 
   generateMod(
-    { prompt, loader, mcVersion, loaderVersion, sessionId },
+    { prompt, loader, mcVersion, loaderVersion, thinkingLevel, sessionId },
     (event) => sendToSession(sessionId, event)
   )
     .then(result => {
-      sendToSession(sessionId, {
-        type: 'done',
-        ...result
-      });
+      sendToSession(sessionId, { type: 'done', ...result });
     })
     .catch(err => {
-      sendToSession(sessionId, {
-        type: 'error',
-        message: err.message
-      });
+      sendToSession(sessionId, { type: 'error', message: err.message });
     });
 });
 
 // ─────────────────────────────────────────────
-// DOWNLOAD ROUTES
+// DOWNLOADS
 // ─────────────────────────────────────────────
 
+// Source ZIP
+app.get('/download/source/:workId', async (req, res) => {
+  const { workId } = req.params;
+  if (!/^[\w-]+$/.test(workId)) return res.status(400).json({ error: 'Invalid workId' });
+
+  const zipPath = path.join(WORKSPACE_DIR, workId, 'source.zip');
+  if (!(await fs.pathExists(zipPath))) return res.status(404).json({ error: 'Source not found' });
+
+  res.download(zipPath, `codexmc-source-${workId.slice(0, 8)}.zip`);
+});
+
+// Compiled JAR
+app.get('/download/jar/:workId', async (req, res) => {
+  const { workId } = req.params;
+  if (!/^[\w-]+$/.test(workId)) return res.status(400).json({ error: 'Invalid workId' });
+
+  const libsDir = path.join(WORKSPACE_DIR, workId, 'build', 'libs');
+  if (!(await fs.pathExists(libsDir))) return res.status(404).json({ error: 'Build directory not found' });
+
+  const files = await fs.readdir(libsDir);
+  const jar = files.find(f => f.endsWith('.jar') && !f.includes('sources') && !f.includes('javadoc'));
+  if (!jar) return res.status(404).json({ error: 'No JAR found. Build may have failed.' });
+
+  res.download(path.join(libsDir, jar), jar);
+});
+
+// Legacy download route
 app.get('/api/download/:zipName', async (req, res) => {
   const { zipName } = req.params;
-
-  if (!/^[\w\-\.]+\.zip$/.test(zipName)) {
-    return res.status(400).json({ error: 'Invalid filename' });
-  }
+  if (!/^[\w\-\.]+\.zip$/.test(zipName)) return res.status(400).json({ error: 'Invalid filename' });
 
   const zipPath = path.join('/var/codexmc-output', zipName);
-
-  if (!await fs.pathExists(zipPath)) {
-    return res.status(404).json({ error: 'File not found' });
-  }
+  if (!(await fs.pathExists(zipPath))) return res.status(404).json({ error: 'File not found' });
 
   res.download(zipPath, zipName);
-});
-
-// source
-app.get('/download/source/:id', async (req, res) => {
-  const file = path.join(WORKSPACE_DIR, req.params.id, 'source.zip');
-
-  if (!await fs.pathExists(file)) {
-    return res.status(404).send("Source not found");
-  }
-
-  res.download(file);
-});
-
-// jar
-app.get('/download/jar/:id', async (req, res) => {
-  const dir = path.join(WORKSPACE_DIR, req.params.id, 'build', 'libs');
-
-  if (!await fs.pathExists(dir)) {
-    return res.status(404).send("Build folder not found");
-  }
-
-  const files = await fs.readdir(dir);
-  const jar = files.find(f => f.endsWith('.jar'));
-
-  if (!jar) {
-    return res.status(404).send("No JAR found");
-  }
-
-  res.download(path.join(dir, jar));
 });
 
 // ─────────────────────────────────────────────
@@ -233,8 +185,10 @@ app.get('/download/jar/:id', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
+    model: 'deepseek/deepseek-r1:free',
     activeSessions: activeSessions.size,
-    uptime: Math.floor(process.uptime())
+    uptime: Math.floor(process.uptime()),
+    workspace: WORKSPACE_DIR,
   });
 });
 
@@ -247,14 +201,16 @@ app.get('*', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// START SERVER
+// START
 // ─────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
-  console.log(`Server running at http://${HOST}:${PORT}`);
+  console.log(`✅ CodexMC running at http://${HOST}:${PORT}`);
+  console.log(`🤖 Model: deepseek/deepseek-r1:free (via OpenRouter)`);
+  console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
 });
 
 module.exports = app;
