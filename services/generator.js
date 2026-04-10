@@ -195,9 +195,10 @@ java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
 // BUILD SYSTEM
 // ─────────────────────────────────────────────
 
-function getJavaHome(version) {
-  return '/opt/jdk/17';
-}
+const javaVersion =
+  workDir.includes('1.21') ? '21' :
+  workDir.includes('1.20') ? '17' :
+  '17';
 
 function buildMod(workDir, emit) {
   return new Promise((resolve, reject) => {
