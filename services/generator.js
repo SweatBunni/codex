@@ -256,7 +256,41 @@ async function fixGradle(workDir) {
     g = 'repositories { mavenCentral() }\n' + g;
   }
 
+  // Fix: Remove pluginManagement from build.gradle if present (it belongs in settings.gradle)
+  if (g.includes('pluginManagement')) {
+    g = g.replace(/pluginManagement\s*\{[\s\S]*?\}\s*/m, '');
+  }
+
   await fs.writeFile(file, g);
+}
+
+async function fixSettings(workDir) {
+  const settingsFile = path.join(workDir, 'settings.gradle');
+  const buildFile = path.join(workDir, 'build.gradle');
+
+  // If build.gradle has pluginManagement, extract it to settings.gradle
+  if (await fs.pathExists(buildFile)) {
+    let build = await fs.readFile(buildFile, 'utf8');
+    const pluginMgmtMatch = build.match(/pluginManagement\s*\{[\s\S]*?\}/);
+    
+    if (pluginMgmtMatch) {
+      // Create or update settings.gradle with the extracted pluginManagement
+      let settings = '';
+      if (await fs.pathExists(settingsFile)) {
+        settings = await fs.readFile(settingsFile, 'utf8');
+      }
+      
+      // Add pluginManagement at the top if not already present
+      if (!settings.includes('pluginManagement')) {
+        settings = pluginMgmtMatch[0] + '\n\n' + settings;
+        await fs.writeFile(settingsFile, settings);
+      }
+
+      // Remove from build.gradle
+      build = build.replace(/pluginManagement\s*\{[\s\S]*?\}\s*/m, '');
+      await fs.writeFile(buildFile, build);
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -309,18 +343,21 @@ function buildSystemPrompt(request, thinkingLevel) {
     loaderInstructions = `
 CRITICAL FABRIC REQUIREMENTS:
 
-build.gradle MUST start with:
-plugins {
-  id 'fabric-loom' version '${loomVer}'
-  id 'maven-publish'
-}
-
+settings.gradle MUST contain:
 pluginManagement {
   repositories {
     maven { name = 'Fabric' url = 'https://maven.fabricmc.net/' }
     gradlePluginPortal()
   }
 }
+
+build.gradle MUST start with:
+plugins {
+  id 'fabric-loom' version '${loomVer}'
+  id 'maven-publish'
+}
+
+IMPORTANT: pluginManagement goes in settings.gradle, NOT build.gradle!
 
 For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
 
@@ -365,9 +402,10 @@ ${loaderInstructions}
 IMPORTANT:
 - Use EXACT plugin versions above. NO other versions or SNAPSHOT unless specified.
 - All files must be COMPLETE and valid.
-- Include all required files: build.gradle, gradle.properties, src/main/.../mod init class, fabric.mod.json/mods.toml/pack.mcmeta
+- Include all required files: settings.gradle, build.gradle, gradle.properties, src/main/.../mod init class, fabric.mod.json/mods.toml/pack.mcmeta
 - Mod ID: lowercase with hyphens
 - Java package: com.yourname.<modid-without-hyphens>
+- For Fabric: ALWAYS create both settings.gradle (with pluginManagement) AND build.gradle (with plugins)
 
 Return ONLY valid JSON:
 {
@@ -376,7 +414,8 @@ Return ONLY valid JSON:
   "packageName": "com.yourname.yourmodid",
   "mcVersion": "${mcVersion}",
   "files": {
-    "build.gradle": "COMPLETE build script",
+    "settings.gradle": "pluginManagement { repositories { ... } }",
+    "build.gradle": "plugins { ... } repositories { ... } dependencies { ... }",
     "gradle.properties": "...",
     "src/main/resources/fabric.mod.json": "...",
     "src/main/java/.../YourMod.java": "..."
@@ -569,6 +608,7 @@ async function generateMod(request, onProgress) {
   }
 
   await fixGradle(workDir);
+  await fixSettings(workDir);
   await writeGradleWrapper(workDir, request.mcVersion);
   emit('info', 'Building mod...');
   await retry(() => buildMod(workDir, request.mcVersion, emit));
