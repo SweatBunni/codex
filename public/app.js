@@ -25,7 +25,7 @@ function generateUUID() {
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 }
-const HISTORY_KEY = 'codexmc_history_v1';
+const _KEY = 'codexmc__v1';
 
 state.history = loadHistory();
 
@@ -570,15 +570,53 @@ function setGenerating(val) {
 }
 
 // ════════════════════════════════════════════════════════
-//  HISTORY
+//  HISTORY (FIXED + SAFE PERSISTENCE)
 // ════════════════════════════════════════════════════════
+
+const HISTORY_KEY = 'codexmc_history_v1';
+
+state.history = loadHistorySafe();
+
+/**
+ * SAFE LOAD (prevents JSON crash from breaking app)
+ */
+function loadHistorySafe() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+
+    if (!raw || raw === "undefined" || raw === "null") {
+      return [];
+    }
+
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn("⚠️ Corrupted history detected — resetting storage", err);
+    localStorage.removeItem(HISTORY_KEY);
+    return [];
+  }
+}
+
+/**
+ * SAFE SAVE (never breaks app even if storage is full/blocked)
+ */
+function saveHistory() {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history || []));
+  } catch (err) {
+    console.error("❌ Failed to save history:", err);
+  }
+}
+
+/**
+ * RENDER HISTORY UI
+ */
 function renderHistory() {
   const historyEl = document.getElementById('chat-history');
   if (!historyEl) return;
 
   historyEl.innerHTML = '';
 
-  if (!state.history.length) {
+  if (!state.history || state.history.length === 0) {
     historyEl.innerHTML = `<div class="history-empty">No history yet</div>`;
     return;
   }
@@ -588,10 +626,11 @@ function renderHistory() {
     div.className = 'history-item';
 
     div.innerHTML = `
-      <div class="history-item-icon">${item.icon}</div>
+      <div class="history-item-icon">${item.icon || '🎮'}</div>
       <div>
         <div class="history-item-title">
-          ${escapeHtml(item.prompt.slice(0, 38))}${item.prompt.length > 38 ? '…' : ''}
+          ${escapeHtml(item.prompt?.slice(0, 38) || '')}
+          ${item.prompt?.length > 38 ? '…' : ''}
         </div>
         <div class="history-item-meta">${item.loader} · MC ${item.mcVersion}</div>
       </div>
@@ -603,14 +642,17 @@ function renderHistory() {
 
       div.classList.add('active');
 
-      document.getElementById('msg-' + item.id)
-        ?.scrollIntoView({ behavior: 'smooth' });
+      const target = document.getElementById('msg-' + item.id);
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
     };
 
     historyEl.appendChild(div);
   });
 }
 
+/**
+ * ADD HISTORY ITEM (FIXED)
+ */
 function addHistoryItem(prompt, loader, mcVersion, consoleId) {
   const icon = { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
 
@@ -626,34 +668,12 @@ function addHistoryItem(prompt, loader, mcVersion, consoleId) {
   state.history.unshift(item);
 
   if (state.history.length > 50) {
-    state.history.pop();
+    state.history = state.history.slice(0, 50);
   }
 
-  saveHistory();     // ❗ THIS was missing
-  renderHistory();   // redraw UI
+  saveHistory();
+  renderHistory();
 }
-function newSession() {
-  document.getElementById('messages').innerHTML = '';
-  const welcome = document.getElementById('welcome-state');
-  if (welcome) welcome.style.display = 'flex';
-  document.getElementById('prompt-input').value = '';
-  document.getElementById('topbar-title').textContent = 'Mod Generator';
-
-  state.sessionId = generateUUID();
-  state.activeConsoleId = null;
-  state.isGenerating = false;
-
-  const btn = document.getElementById('send-btn');
-  const inp = document.getElementById('prompt-input');
-  if (btn) btn.disabled = false;
-  if (inp) inp.disabled = false;
-
-  if (state.ws) state.ws.close();
-  setTimeout(connectWS, 100);
-
-  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
-}
-
 // ════════════════════════════════════════════════════════
 //  UTILITIES
 // ════════════════════════════════════════════════════════
