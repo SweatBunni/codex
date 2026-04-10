@@ -23,19 +23,19 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
 
 const THINKING_CONFIGS = {
   low: {
-    model: 'qwen/qwen3-coder:free',
+    model: 'openai/gpt-oss-120b:free',
     max_tokens: 4000,
     temperature: 0.3,
     extraSystemNote: 'Be concise. Generate only the essential files needed for the mod.',
   },
   medium: {
-    model: 'qwen/qwen3-coder:free',
+    model: 'openai/gpt-oss-120b:free',
     max_tokens: 8000,
     temperature: 0.25,
     extraSystemNote: 'Think carefully about the mod architecture. Include proper event handling and all required registrations.',
   },
   high: {
-    model: 'qwen/qwen3-coder:free',
+    model: 'openai/gpt-oss-120b:free',
     max_tokens: 16000,
     temperature: 0.2,
     extraSystemNote: 'Think deeply and thoroughly. Consider all edge cases, proper Minecraft API usage, version compatibility, registration order, and common pitfalls. Generate complete, well-commented, production-quality code with all necessary files.',
