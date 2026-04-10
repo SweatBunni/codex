@@ -290,13 +290,6 @@ function renderMessages(sessionId) {
 
     div.innerHTML = `
       <div class="msg-content">${escapeHtml(m.content)}</div>
-      <div class="msg-actions">
-        ${m.role === 'ai'
-          ? `<button onclick="regenerateMessage('${m.id}')">🔄 Regenerate</button>`
-          : ''
-        }
-        <button onclick="forkSession(${i})">🌿 Fork</button>
-      </div>
     `;
 
     msgs.appendChild(div);
