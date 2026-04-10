@@ -458,13 +458,43 @@ function handleWsMessage(msg) {
   const { type, message } = msg;
 
   if (type === 'history') return;
-  if (type === 'connected') return;
-  if (type === 'done') { onGenerationDone(msg); return; }
-  if (type === 'error') { onGenerationError(message); return; }
-  if (type === 'thinking_start') { showThinkingIndicator(msg.level); return; }
-  if (type === 'thinking_end') { hideThinkingIndicator(); return; }
+  if (type === 'connected') {
+    liveConsoleAppend('info', 'WebSocket connected');
+    return;
+  }
+  if (type === 'done') {
+    liveConsoleAppend('success', '✔ Build complete');
+    updateLcSubtitle('idle');
+    onGenerationDone(msg);
+    return;
+  }
+  if (type === 'error') {
+    liveConsoleAppend('error', '✖ ' + message);
+    updateLcSubtitle('error');
+    onGenerationError(message);
+    return;
+  }
+  if (type === 'thinking_start') {
+    liveConsoleAppend('info', `[thinking] ${msg.level} reasoning started`);
+    showThinkingIndicator(msg.level);
+    return;
+  }
+  if (type === 'thinking_end') {
+    liveConsoleAppend('info', '[thinking] reasoning complete');
+    hideThinkingIndicator();
+    return;
+  }
 
+  // Mirror all build/warn/info/file/ai output to live console
+  liveConsoleAppend(type, message);
   appendConsoleOutput(type, message);
+}
+
+function updateLcSubtitle(status) {
+  const el = document.getElementById('lc-subtitle');
+  if (!el) return;
+  el.textContent = status;
+  el.className = 'lc-subtitle lc-sub-' + status;
 }
 
 function setStatus(s, text) {
@@ -833,6 +863,10 @@ function setGenerating(val) {
   const inp = document.getElementById('prompt-input');
   if (btn) btn.disabled = val;
   if (inp) inp.disabled = val;
+  if (val) {
+    liveConsoleAppend('info', '— Generation started —');
+    updateLcSubtitle('generating');
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -875,6 +909,126 @@ function useExample(btn) {
 //  LANDING TERMINAL ANIMATION
 // ════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════
+//  LIVE CONSOLE PANEL
+// ════════════════════════════════════════════════════════
+
+function toggleLiveConsole() {
+  state.consoleOpen = !state.consoleOpen;
+  const panel   = document.getElementById('live-console-panel');
+  const btn     = document.getElementById('console-toggle-btn');
+  const appPage = document.getElementById('app-page');
+  if (!panel) return;
+
+  if (state.consoleOpen) {
+    panel.classList.add('open');
+    if (btn) btn.classList.add('active');
+    if (appPage) appPage.classList.add('console-open');
+    scrollLiveConsole();
+  } else {
+    panel.classList.remove('open');
+    if (btn) btn.classList.remove('active');
+    if (appPage) appPage.classList.remove('console-open');
+  }
+}
+
+function liveConsoleAppend(type, text) {
+  if (!text) return;
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+
+  String(text).split('\n').forEach(line => {
+    if (!line.trim()) return;
+    state.consoleLog.push({ type, text: line, ts });
+    if (state.consoleLog.length > 500) state.consoleLog.shift();
+
+    const output = document.getElementById('live-console-output');
+    if (!output) return;
+
+    const row = document.createElement('div');
+    row.className = 'lc-line lc-' + type;
+    row.innerHTML = `<span class="lc-ts">\${ts}</span><span class="lc-text">\${escapeLiveConsole(line)}</span>`;
+    output.appendChild(row);
+
+    if (output.scrollHeight - output.scrollTop - output.clientHeight < 80) {
+      scrollLiveConsole();
+    }
+
+    if (!state.consoleOpen) {
+      const btn = document.getElementById('console-toggle-btn');
+      if (btn) {
+        btn.classList.add('has-new');
+        clearTimeout(btn._flashTimer);
+        btn._flashTimer = setTimeout(() => btn.classList.remove('has-new'), 2000);
+      }
+    }
+  });
+}
+
+function clearLiveConsole() {
+  state.consoleLog = [];
+  const output = document.getElementById('live-console-output');
+  if (output) output.innerHTML = '';
+}
+
+function scrollLiveConsole() {
+  const output = document.getElementById('live-console-output');
+  if (output) output.scrollTop = output.scrollHeight;
+}
+
+function escapeLiveConsole(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function injectLiveConsoleDOM() {
+  const panel = document.createElement('div');
+  panel.id = 'live-console-panel';
+  panel.innerHTML = `
+    <div class="lc-titlebar">
+      <div class="lc-titlebar-left">
+        <div class="console-dots">
+          <div class="console-dot" style="background:#ff5f57"></div>
+          <div class="console-dot" style="background:#ffbd2e"></div>
+          <div class="console-dot" style="background:#28c840"></div>
+        </div>
+        <span class="lc-title">Live Console</span>
+        <span class="lc-subtitle" id="lc-subtitle">idle</span>
+      </div>
+      <div class="lc-titlebar-right">
+        <button class="lc-btn" onclick="clearLiveConsole()" title="Clear">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Clear
+        </button>
+        <button class="lc-btn lc-btn-close" onclick="toggleLiveConsole()" title="Hide console">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="lc-output" id="live-console-output"></div>
+  `;
+
+  const appPage = document.getElementById('app-page');
+  if (appPage) appPage.appendChild(panel);
+
+  const topbarRight = document.querySelector('.topbar-right');
+  if (topbarRight) {
+    const btn = document.createElement('button');
+    btn.id = 'console-toggle-btn';
+    btn.className = 'topbar-console-btn';
+    btn.title = 'Toggle live console';
+    btn.onclick = toggleLiveConsole;
+    btn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+      </svg>
+      Console
+    `;
+    topbarRight.prepend(btn);
+  }
+}
+
 function animateTerminal() {
   const body = document.getElementById('terminal-preview-body');
   if (!body) return;
@@ -906,6 +1060,7 @@ function animateTerminal() {
 document.addEventListener('DOMContentLoaded', () => {
   initCanvas();
   animateTerminal();
+  injectLiveConsoleDOM();
 
   const thinkingSelect = document.getElementById('thinking-select');
   if (thinkingSelect) thinkingSelect.addEventListener('change', onThinkingChange);
