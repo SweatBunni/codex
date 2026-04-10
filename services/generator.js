@@ -1,4 +1,4 @@
- fix /**
+/**
  * CodexMC AI Generation Service
  * Now includes Gradle wrapper template system + auto Java detection
  */
