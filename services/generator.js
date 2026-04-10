@@ -66,19 +66,40 @@ function extractJSON(text) {
     .trim();
 
   const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-
-  if (start === -1 || end === -1) {
+  if (start === -1) {
     throw new Error("No JSON found in AI response");
   }
 
-  const jsonString = cleaned.slice(start, end + 1);
+  let jsonString = cleaned.slice(start);
 
+  // 🔥 FIX: attempt parse first
   try {
     return JSON.parse(jsonString);
-  } catch (err) {
-    throw new Error("Invalid JSON from AI:\n" + jsonString);
+  } catch {}
+
+  // 🔥 FIX: auto-repair truncated JSON
+  try {
+    let openBraces = (jsonString.match(/{/g) || []).length;
+    let closeBraces = (jsonString.match(/}/g) || []).length;
+
+    // add missing closing braces
+    while (closeBraces < openBraces) {
+      jsonString += "}";
+      closeBraces++;
+    }
+
+    return JSON.parse(jsonString);
+  } catch {}
+
+  // 🔥 LAST RESORT: hard cut at last valid brace
+  const lastValidIndex = jsonString.lastIndexOf("}");
+  if (lastValidIndex !== -1) {
+    try {
+      return JSON.parse(jsonString.slice(0, lastValidIndex + 1));
+    } catch {}
   }
+
+  throw new Error("Invalid JSON from AI (unrecoverable)");
 }
 
 // ─────────────────────────────────────────────────────────────
