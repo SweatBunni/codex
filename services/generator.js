@@ -9,7 +9,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const archiver = require('archiver');
 const { execFile, spawn } = require('child_process');
-const { getRequiredJdk } = require('./versions');
+const { getRequiredJdk } = require('../versions');
 
 const MISTRAL_API = 'https://api.mistral.ai/v1/chat/completions';
 
