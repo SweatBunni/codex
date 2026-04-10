@@ -108,7 +108,7 @@ async function generateMod(request, onProgress) {
     const response = await axios.post(
       OPENROUTER_API,
       {
-        model: "qwen/qwen3-next-80b-a3b-instruct:free",
+        model: "nvidia/nemotron-3-super-120b-a12b:free",
         temperature: 0.7,
         max_tokens: 8000,
         stream: true,
