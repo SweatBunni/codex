@@ -327,11 +327,10 @@ For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
 fabric.mod.json: 
 {
   "schemaVersion": 1,
-
   "version": "1.0.0",
-  "name": "${modName}",
-  "main": "${package}.YourMod",
-  "entrypoints": { "main": ["${package}.YourMod"] },
+  "name": "Your Mod Name",
+  "main": "com.example.yourmod.YourMod",
+  "entrypoints": { "main": ["com.example.yourmod.YourMod"] },
   "depends": { "fabricloader": ">=0.14.0", "minecraft": "${mcVersion}", "java": ">=17", "fabric-api": "*" }
 }`;
   } else if (loader === 'forge') {
