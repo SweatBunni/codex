@@ -1,12 +1,6 @@
 /**
  * CodexMC — Frontend App
- * Features: thinking levels, JAR download, source ZIP download,
- * WebSocket live console, version management, session history
  */
-
-// ════════════════════════════════════════════════════════
-//  STATE
-// ════════════════════════════════════════════════════════
 
 const HISTORY_KEY = 'codexmc_history_v1';
 
@@ -19,190 +13,75 @@ const state = {
   isGenerating: false,
   activeConsoleId: null,
   thinkingLevel: 'medium',
-
-  // ✅ FIX: persistent history
-  history: loadHistory()
+  history: []
 };
 
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
-}
-
-// ════════════════════════════════════════════════════════
-//  HISTORY STORAGE (NEW FIX)
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+// HISTORY (FIXED + SAFE)
+// ═══════════════════════════════════════
 
 function loadHistory() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
 function saveHistory() {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+  } catch (e) {
+    console.warn('History save failed:', e);
+  }
 }
 
 function pushHistory(item) {
   state.history.unshift(item);
-  if (state.history.length > 50) state.history.pop();
+
+  if (state.history.length > 50) {
+    state.history = state.history.slice(0, 50);
+  }
+
   saveHistory();
 }
 
-// ════════════════════════════════════════════════════════
-//  BACKGROUND CANVAS
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
 
-function initCanvas() {
-  const canvas = document.getElementById('bg-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  let W, H, particles, raf;
+document.addEventListener('DOMContentLoaded', () => {
+  state.history = loadHistory();
 
-  function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
+  initCanvas();
+  animateTerminal();
 
-  function makeParticles() {
-    particles = Array.from({ length: 60 }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.3,
-      vy: (Math.random() - 0.5) * 0.3,
-      r: Math.random() * 1.2 + 0.4,
-      alpha: Math.random() * 0.35 + 0.05
-    }));
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-
-    const g = 64;
-    ctx.strokeStyle = 'rgba(255,255,255,0.025)';
-    ctx.lineWidth = 1;
-
-    for (let x = 0; x < W; x += g) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    }
-    for (let y = 0; y < H; y += g) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    }
-
-    const grad = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.55);
-    grad.addColorStop(0, 'rgba(74,222,128,0.05)');
-    grad.addColorStop(1, 'rgba(74,222,128,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    for (const p of particles) {
-      p.x += p.vx; p.y += p.vy;
-      if (p.x < 0) p.x = W;
-      if (p.x > W) p.x = 0;
-      if (p.y < 0) p.y = H;
-      if (p.y > H) p.y = 0;
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(74,222,128,${p.alpha})`;
-      ctx.fill();
-    }
-
-    raf = requestAnimationFrame(draw);
-  }
-
-  resize();
-  makeParticles();
-  draw();
-  window.addEventListener('resize', () => { resize(); makeParticles(); });
-}
-
-// ════════════════════════════════════════════════════════
-//  NAVIGATION
-// ════════════════════════════════════════════════════════
-
-function showApp() {
-  document.getElementById('landing-page').style.display = 'none';
-  const app = document.getElementById('app-page');
-  app.style.display = 'flex';
-  app.classList.add('fade-in');
-  connectWS();
-  loadVersions('forge');
-
-  // ✅ restore history on enter
   renderHistory();
-}
 
-function showLanding() {
-  document.getElementById('app-page').style.display = 'none';
-  document.getElementById('landing-page').style.display = 'block';
-  if (state.ws) { state.ws.close(); state.ws = null; }
-}
+  const thinkingSelect = document.getElementById('thinking-select');
+  if (thinkingSelect) thinkingSelect.addEventListener('change', onThinkingChange);
 
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
-}
+  const loaderSelect = document.getElementById('loader-select');
+  if (loaderSelect) loaderSelect.addEventListener('change', onLoaderChange);
 
-// ════════════════════════════════════════════════════════
-//  WEBSOCKET
-// ════════════════════════════════════════════════════════
+  // ✅ CTRL + ENTER FIX
+  const promptInput = document.getElementById('prompt-input');
+  if (promptInput) {
+    promptInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        sendPrompt();
+      }
+    });
+  }
+});
 
-function connectWS() {
-  if (state.ws && state.ws.readyState < 2) return;
-
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  state.ws = new WebSocket(`${proto}//${location.host}/ws/${state.sessionId}`);
-
-  state.ws.onopen = () => {
-    setStatus('connected', 'Connected');
-    clearTimeout(state.wsReconnectTimer);
-  };
-
-  state.ws.onclose = () => {
-    setStatus('error', 'Disconnected');
-    state.wsReconnectTimer = setTimeout(connectWS, 3000);
-  };
-
-  state.ws.onerror = () => setStatus('error', 'Error');
-
-  state.ws.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      handleWsMessage(msg);
-    } catch {}
-  };
-}
-
-function handleWsMessage(msg) {
-  const { type, message } = msg;
-
-  if (type === 'done') return onGenerationDone(msg);
-  if (type === 'error') return onGenerationError(message);
-  if (type === 'thinking_start') return showThinkingIndicator(msg.level);
-  if (type === 'thinking_end') return hideThinkingIndicator();
-
-  appendConsoleOutput(type, message);
-}
-
-function setStatus(s, text) {
-  const dot = document.getElementById('status-dot');
-  const label = document.getElementById('status-text');
-  if (dot) dot.className = 'status-dot ' + s;
-  if (label) label.textContent = text;
-}
-
-// ════════════════════════════════════════════════════════
-//  VERSION LOADING (UNCHANGED)
-// ════════════════════════════════════════════════════════
-// (keep your existing version functions as-is)
-
-// ════════════════════════════════════════════════════════
-//  GENERATION
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+// PROMPT SENDING (FIXED SAFE STATE)
+// ═══════════════════════════════════════
 
 async function sendPrompt() {
   if (state.isGenerating) return;
@@ -224,7 +103,6 @@ async function sendPrompt() {
   addUserMessage(prompt, loader, mcVersion, thinkingLevel);
   addConsoleMessage(consoleId, loader, mcVersion, thinkingLevel);
 
-  // ✅ FIX: save history immediately
   addHistoryItem(prompt, loader, mcVersion, consoleId);
 
   promptInput.value = '';
@@ -247,16 +125,21 @@ async function sendPrompt() {
     });
   } catch (err) {
     appendConsoleOutput('error', err.message);
+  } finally {
     setGenerating(false);
   }
 }
 
-// ════════════════════════════════════════════════════════
-//  HISTORY (FIXED FULL SYSTEM)
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+// HISTORY SYSTEM (FIXED)
+// ═══════════════════════════════════════
 
 function addHistoryItem(prompt, loader, mcVersion, consoleId) {
-  const icon = { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
+  const icon = {
+    forge: '⚙️',
+    fabric: '🪡',
+    neoforge: '✨'
+  }[loader] || '🎮';
 
   pushHistory({
     id: consoleId,
@@ -271,17 +154,17 @@ function addHistoryItem(prompt, loader, mcVersion, consoleId) {
 }
 
 function renderHistory() {
-  const historyEl = document.getElementById('chat-history');
-  if (!historyEl) return;
+  const el = document.getElementById('chat-history');
+  if (!el) return;
 
-  historyEl.innerHTML = '';
+  el.innerHTML = '';
 
   if (!state.history.length) {
-    historyEl.innerHTML = `<div class="history-empty">No history yet</div>`;
+    el.innerHTML = `<div class="history-empty">No history yet</div>`;
     return;
   }
 
-  state.history.forEach(item => {
+  state.history.forEach((item, i) => {
     const div = document.createElement('div');
     div.className = 'history-item';
 
@@ -291,13 +174,15 @@ function renderHistory() {
         <div class="history-item-title">
           ${escapeHtml(item.prompt.slice(0, 38))}${item.prompt.length > 38 ? '…' : ''}
         </div>
-        <div class="history-item-meta">${item.loader} · MC ${item.mcVersion}</div>
+        <div class="history-item-meta">
+          ${item.loader} · MC ${item.mcVersion}
+        </div>
       </div>
     `;
 
     div.onclick = () => {
       document.querySelectorAll('.history-item')
-        .forEach(el => el.classList.remove('active'));
+        .forEach(x => x.classList.remove('active'));
 
       div.classList.add('active');
 
@@ -305,13 +190,15 @@ function renderHistory() {
         ?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    historyEl.appendChild(div);
+    el.appendChild(div);
+
+    if (i === 0) div.classList.add('active');
   });
 }
 
-// ════════════════════════════════════════════════════════
-//  NEW SESSION (FIXED)
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+// NEW SESSION (SAFE)
+// ═══════════════════════════════════════
 
 function newSession() {
   document.getElementById('messages').innerHTML = '';
@@ -327,21 +214,3 @@ function newSession() {
 
   renderHistory();
 }
-
-// ════════════════════════════════════════════════════════
-//  INIT
-// ════════════════════════════════════════════════════════
-
-document.addEventListener('DOMContentLoaded', () => {
-  initCanvas();
-  animateTerminal();
-
-  const thinkingSelect = document.getElementById('thinking-select');
-  if (thinkingSelect) thinkingSelect.addEventListener('change', onThinkingChange);
-
-  const loaderSelect = document.getElementById('loader-select');
-  if (loaderSelect) loaderSelect.addEventListener('change', onLoaderChange);
-
-  // ✅ RESTORE HISTORY ON REFRESH
-  renderHistory();
-});
