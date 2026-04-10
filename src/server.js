@@ -128,7 +128,38 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor(process.uptime())
   });
 });
+// ── NEW DOWNLOAD ROUTES (IMPORTANT) ───────────────────────────
 
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
+
+// Download source ZIP
+app.get('/download/source/:id', async (req, res) => {
+  const file = path.join(WORKSPACE_DIR, req.params.id, 'source.zip');
+
+  if (!await fs.pathExists(file)) {
+    return res.status(404).send("Source not found or expired");
+  }
+
+  res.download(file);
+});
+
+// Download built JAR
+app.get('/download/jar/:id', async (req, res) => {
+  const dir = path.join(WORKSPACE_DIR, req.params.id, 'build', 'libs');
+
+  if (!await fs.pathExists(dir)) {
+    return res.status(404).send("Build folder not found");
+  }
+
+  const files = await fs.readdir(dir);
+  const jar = files.find(f => f.endsWith('.jar'));
+
+  if (!jar) {
+    return res.status(404).send("No JAR found (build may have failed)");
+  }
+
+  res.download(path.join(dir, jar));
+});
 // Serve frontend for all other routes (SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
