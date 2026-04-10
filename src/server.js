@@ -11,8 +11,8 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs-extra');
 
-const { getForgeVersions, getFabricVersions, getNeoForgeVersions } = require('./services/versions');
-const { generateMod } = require('./services/generator');
+const { getForgeVersions, getFabricVersions, getNeoForgeVersions } = require('../services/versions');
+const { generateMod } = require('../services/generator');
 
 const app = express();
 expressWs(app);
