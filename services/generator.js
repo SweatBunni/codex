@@ -368,21 +368,19 @@ IMPORTANT:
 - All files must be COMPLETE and valid.
 - Include all required files: build.gradle, gradle.properties, src/main/.../mod init class, fabric.mod.json/mods.toml/pack.mcmeta
 - Mod ID: lowercase with hyphens
-- Java package: com.yourname.${modId.replace(/-/g,'')}
+- Java package: com.yourname.<modid-without-hyphens>
 
 Return ONLY valid JSON:
 {
-"name": "ExampleMod",
-"main": "com.example.mod.YourMod",
-"entrypoints": { "main": ["com.example.mod.YourMod"] },
-...
-"package": "com.yourname.examplemod"
+  "modName": "YourModName",
+  "modId": "yourmodid",
+  "packageName": "com.yourname.yourmodid",
   "mcVersion": "${mcVersion}",
   "files": {
     "build.gradle": "COMPLETE build script",
     "gradle.properties": "...",
     "src/main/resources/fabric.mod.json": "...",
-    "src/main/java/.../ExampleMod.java": "..."
+    "src/main/java/.../YourMod.java": "..."
   }
 }`;
 }
