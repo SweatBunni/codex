@@ -195,27 +195,32 @@ java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
 // BUILD SYSTEM
 // ─────────────────────────────────────────────
 
-const javaVersion =
-  workDir.includes('1.21') ? '21' :
-  workDir.includes('1.20') ? '17' :
-  '17';
-
 function buildMod(workDir, emit) {
   return new Promise((resolve, reject) => {
     const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 
-    // Ensure wrapper is executable
-    try {
-      const gw = path.join(workDir, 'gradlew');
-      if (fs.existsSync(gw)) fs.chmodSync(gw, '755');
-    } catch {}
+    // Detect correct Java version
+    let javaHome = process.env.JAVA_HOME;
+
+    // safer fallback
+    const javaVersion =
+      workDir.includes('1.21') ? '21' :
+      workDir.includes('1.20') ? '17' :
+      '17';
+
+    if (javaVersion === '21') {
+      javaHome = process.env.JAVA_21_HOME || javaHome;
+    } else {
+      javaHome = process.env.JAVA_17_HOME || javaHome;
+    }
 
     const proc = spawn(cmd, ['build', '--no-daemon'], {
       cwd: workDir,
       shell: true,
       env: {
         ...process.env,
-        JAVA_HOME: getJavaHome('17'),
+        JAVA_HOME: javaHome || process.env.JAVA_HOME,
+        PATH: process.env.PATH,
       },
     });
 
