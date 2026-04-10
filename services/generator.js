@@ -1,6 +1,6 @@
 /**
  * CodexMC AI Generation Service
- * Now includes Gradle wrapper template system
+ * Now includes Gradle wrapper template system + auto Java detection
  */
 
 const axios = require('axios');
@@ -8,72 +8,169 @@ const fs = require('fs-extra');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const archiver = require('archiver');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
-
-// ─────────────────────────────────────────────
-// GRADLE TEMPLATE LOCATION
-// ─────────────────────────────────────────────
 const TEMPLATE_GRADLE_DIR = '/srv/codex/gradletmp';
 
 // ─────────────────────────────────────────────
-// JAVA VERSION MAPPING
-// Java class file major versions:
-//   61 = Java 17
-//   65 = Java 21
-//   66 = Java 22
-//   67 = Java 23
-//   68 = Java 24
+// JAVA AUTO-DETECTION
 //
-// Gradle 8.8 supports up to Java 22 (class version 66).
-// Never let the system Java (which may be 25+) run the build —
-// always resolve an explicit JAVA_*_HOME env var.
+// Resolution order for a required Java version:
+//   1. Explicit env var:   JAVA_17_HOME, JAVA_21_HOME, etc.
+//   2. SDKMAN candidates:  ~/.sdkman/candidates/java/<version>.*
+//   3. Common system paths: /usr/lib/jvm/java-<version>-*
+//   4. `java -version` on PATH — used only if the major version matches.
+//
+// Results are cached after the first probe so the filesystem
+// is only scanned once per process lifetime.
 // ─────────────────────────────────────────────
 
+const javaHomeCache = {};
+
 /**
- * Returns the minimum required Java version for a given MC version,
- * and the corresponding JAVA_*_HOME env var name to look up.
- *
- * MC 1.21+  → Java 21 (Gradle 8.8, class version 65)
- * MC 1.20.x → Java 17 (Gradle 8.5, class version 61)
- * MC 1.19.x → Java 17 (Gradle 8.3, class version 61)
- * Older     → Java 17 (Gradle 8.1, class version 61)
+ * Returns the Java major version number reported by the binary at `javaHome`,
+ * or null if the path doesn't contain a working JDK.
  */
-function resolveJavaVersion(mcVersion) {
-  if (!mcVersion) return { javaVersion: 17, envKey: 'JAVA_17_HOME' };
-
-  const [, minor] = mcVersion.split('.').map(Number);
-
-  if (minor >= 21) return { javaVersion: 21, envKey: 'JAVA_21_HOME' };
-  return { javaVersion: 17, envKey: 'JAVA_17_HOME' };
+function probeJavaMajorVersion(javaHome) {
+  try {
+    const bin = path.join(javaHome, 'bin', 'java');
+    // `java -version` writes to stderr
+    const out = execSync(`"${bin}" -version 2>&1`, { timeout: 5000 }).toString();
+    // Handles both:  version "17.0.11"  and  version "1.8.0_391"
+    const match = out.match(/version "(?:1\.(\d+)|(\d+))[\.\-_"]/);
+    if (!match) return null;
+    return parseInt(match[1] || match[2], 10);
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Resolves the JAVA_HOME path to use for a given MC version.
- * Throws if the required env var isn't set — better to fail early
- * with a clear message than to silently fall back to the system Java
- * (which may be an unsupported version like 25).
+ * Scans candidate directories for a JDK of the requested major version.
+ * Returns the first matching JAVA_HOME string, or null.
  */
-function resolveJavaHome(mcVersion) {
-  const { javaVersion, envKey } = resolveJavaVersion(mcVersion);
+function scanForJava(majorVersion) {
+  const home = process.env.HOME || '/root';
 
-  const javaHome = process.env[envKey];
+  // Candidate roots to search, in priority order
+  const searchRoots = [
+    // SDKMAN
+    path.join(home, '.sdkman', 'candidates', 'java'),
+    // Debian/Ubuntu
+    '/usr/lib/jvm',
+    // RHEL/Fedora
+    '/usr/java',
+    // macOS Homebrew
+    '/opt/homebrew/opt',
+    '/usr/local/opt',
+    // Generic /opt
+    '/opt/java',
+    '/opt/jdk',
+  ];
 
-  if (!javaHome) {
-    throw new Error(
-      `Required env var ${envKey} is not set. ` +
-      `Please configure Java ${javaVersion} and set ${envKey} to its home directory.`
+  for (const root of searchRoots) {
+    if (!fs.pathExistsSync(root)) continue;
+
+    let entries;
+    try { entries = fs.readdirSync(root); } catch { continue; }
+
+    // Sort descending so e.g. "21.0.3" is preferred over "21-ea"
+    entries.sort().reverse();
+
+    for (const entry of entries) {
+      const candidate = path.join(root, entry);
+
+      // Quick name-based filter before paying for a subprocess
+      const nameHint = entry.replace(/[^0-9]/g, ' ').trim().split(/\s+/)[0];
+      if (nameHint && parseInt(nameHint, 10) !== majorVersion) continue;
+
+      const found = probeJavaMajorVersion(candidate);
+      if (found === majorVersion) return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns the JAVA_HOME to use for the given major version.
+ * Throws with a clear, actionable message if nothing is found.
+ */
+function resolveJavaHome(majorVersion) {
+  if (javaHomeCache[majorVersion]) return javaHomeCache[majorVersion];
+
+  // 1. Explicit env var
+  const envKey = `JAVA_${majorVersion}_HOME`;
+  if (process.env[envKey]) {
+    const v = probeJavaMajorVersion(process.env[envKey]);
+    if (v === majorVersion) {
+      javaHomeCache[majorVersion] = process.env[envKey];
+      return process.env[envKey];
+    }
+    console.warn(
+      `⚠️  ${envKey} is set but the JDK at that path reports Java ${v}, not ${majorVersion}. Falling back to auto-detection.`
     );
   }
 
-  return javaHome;
+  // 2 & 3. Scan filesystem
+  const scanned = scanForJava(majorVersion);
+  if (scanned) {
+    console.log(`✅  Auto-detected Java ${majorVersion} at: ${scanned}`);
+    javaHomeCache[majorVersion] = scanned;
+    return scanned;
+  }
+
+  // 4. Fall back to PATH java only if its major version matches exactly
+  try {
+    const systemOut = execSync('java -version 2>&1', { timeout: 5000 }).toString();
+    const match = systemOut.match(/version "(?:1\.(\d+)|(\d+))[\.\-_"]/);
+    if (match) {
+      const systemMajor = parseInt(match[1] || match[2], 10);
+      if (systemMajor === majorVersion) {
+        const javaExe = execSync('which java 2>/dev/null || where java 2>nul', { timeout: 3000 })
+          .toString().trim().split('\n')[0].trim();
+        // Typically: /usr/lib/jvm/java-21.../bin/java -> two levels up
+        const derived = path.resolve(javaExe, '..', '..');
+        console.log(`✅  Using system Java ${majorVersion} at: ${derived}`);
+        javaHomeCache[majorVersion] = derived;
+        return derived;
+      }
+    }
+  } catch { /* system java not available */ }
+
+  // Nothing worked — give a helpful error
+  throw new Error(
+    `Java ${majorVersion} not found. Tried:\n` +
+    `  • env var ${envKey}\n` +
+    `  • ~/.sdkman/candidates/java/\n` +
+    `  • /usr/lib/jvm/, /usr/java/, /opt/jdk/\n` +
+    `  • system PATH java\n\n` +
+    `Fix options:\n` +
+    `  • Set ${envKey}=/path/to/jdk-${majorVersion}\n` +
+    `  • Install via SDKMAN: sdk install java ${majorVersion}-tem\n` +
+    `  • Install via apt:    apt install openjdk-${majorVersion}-jdk`
+  );
 }
 
 // ─────────────────────────────────────────────
-// GRADLE VERSION MAPPING
+// JAVA / GRADLE VERSION MAPPING
 // ─────────────────────────────────────────────
+
+/**
+ * Returns the minimum Java major version required for a given MC version.
+ *
+ * MC 1.21+  -> Java 21  (Gradle 8.8)
+ * MC 1.20.x -> Java 17  (Gradle 8.5)
+ * MC 1.19.x -> Java 17  (Gradle 8.3)
+ * Older     -> Java 17  (Gradle 8.1)
+ */
+function requiredJavaMajor(mcVersion) {
+  if (!mcVersion) return 17;
+  const [, minor] = mcVersion.split('.').map(Number);
+  return minor >= 21 ? 21 : 17;
+}
 
 function resolveGradleVersion(mcVersion) {
   if (!mcVersion) return '8.1.1';
@@ -156,11 +253,9 @@ function extractJSON(text) {
   try { return JSON.parse(json); } catch {}
 
   const last = json.lastIndexOf('}');
-  if (last !== -1) {
-    return JSON.parse(json.slice(0, last + 1));
-  }
+  if (last !== -1) return JSON.parse(json.slice(0, last + 1));
 
-  throw new Error('Invalid JSON');
+  throw new Error('Invalid JSON from AI response');
 }
 
 // ─────────────────────────────────────────────
@@ -190,24 +285,17 @@ async function writeGradleWrapper(workDir, mcVersion) {
   const wrapperDir = path.join(workDir, 'gradle', 'wrapper');
   await fs.ensureDir(wrapperDir);
 
-  // Copy real wrapper files from template
   const files = ['gradle-wrapper.jar', 'gradle-wrapper.properties'];
-
   for (const file of files) {
     const src = path.join(TEMPLATE_GRADLE_DIR, 'gradle', 'wrapper', file);
     const dest = path.join(wrapperDir, file);
-
-    if (!await fs.pathExists(src)) {
-      throw new Error(`Missing Gradle template file: ${src}`);
-    }
-
+    if (!await fs.pathExists(src)) throw new Error(`Missing Gradle template file: ${src}`);
     await fs.copyFile(src, dest);
   }
 
-  // Patch gradle-wrapper.properties with the correct Gradle version
+  // Patch wrapper properties with the correct Gradle version
   const gradleVersion = resolveGradleVersion(mcVersion);
   const propsPath = path.join(wrapperDir, 'gradle-wrapper.properties');
-
   let props = await fs.readFile(propsPath, 'utf8');
   props = props.replace(
     /distributionUrl=.*$/m,
@@ -215,20 +303,18 @@ async function writeGradleWrapper(workDir, mcVersion) {
   );
   await fs.writeFile(propsPath, props, 'utf8');
 
-  // Write gradlew launcher
-  const gradlew = path.join(workDir, 'gradlew');
+  // gradlew launcher
   await fs.writeFile(
-    gradlew,
+    path.join(workDir, 'gradlew'),
 `#!/bin/sh
 DIR=$(cd "$(dirname "$0")" && pwd)
 exec java -jar "$DIR/gradle/wrapper/gradle-wrapper.jar" "$@"
 `
   );
-  fs.chmodSync(gradlew, 0o755);
+  fs.chmodSync(path.join(workDir, 'gradlew'), 0o755);
 
-  const gradlewBat = path.join(workDir, 'gradlew.bat');
   await fs.writeFile(
-    gradlewBat,
+    path.join(workDir, 'gradlew.bat'),
 `@echo off
 set DIR=%~dp0
 java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
@@ -242,18 +328,16 @@ java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
 
 function buildMod(workDir, mcVersion, emit) {
   return new Promise((resolve, reject) => {
-    // Resolve the correct JAVA_HOME for this MC version.
-    // This throws early with a clear message if the env var isn't configured,
-    // preventing the system Java (e.g. 25, class version 69) from being used.
+    const javaMajor = requiredJavaMajor(mcVersion);
+
     let javaHome;
     try {
-      javaHome = resolveJavaHome(mcVersion);
+      javaHome = resolveJavaHome(javaMajor);
     } catch (err) {
       return reject(err);
     }
 
-    const { javaVersion } = resolveJavaVersion(mcVersion);
-    emit('info', `Using Java ${javaVersion} (${javaHome})`);
+    emit('info', `Using Java ${javaMajor} (${javaHome})`);
 
     const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 
@@ -263,7 +347,9 @@ function buildMod(workDir, mcVersion, emit) {
       env: {
         ...process.env,
         JAVA_HOME: javaHome,
-        // Prepend the correct JDK bin dir so 'java' resolves to the right version.
+        // Prepend the correct JDK bin so `java` resolves to the right version,
+        // preventing a mismatched system Java (e.g. 25 / class version 69)
+        // from being picked up by Gradle.
         PATH: `${path.join(javaHome, 'bin')}${path.delimiter}${process.env.PATH}`,
       },
     });
@@ -281,9 +367,9 @@ function buildMod(workDir, mcVersion, emit) {
       else reject(new Error(`Gradle exited ${code}`));
     });
 
-    proc.on('error', err => {
-      reject(new Error(`Failed to start Gradle wrapper: ${err.message}`));
-    });
+    proc.on('error', err =>
+      reject(new Error(`Failed to start Gradle wrapper: ${err.message}`))
+    );
   });
 }
 
@@ -300,14 +386,13 @@ async function generateMod(request, onProgress) {
   }
 
   await fs.ensureDir(workDir);
-
   emit('info', 'Starting AI generation...');
 
   const aiText = await axios.post(OPENROUTER_API, {
     model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
     messages: [
       { role: 'system', content: buildSystemPrompt(request.thinkingLevel) },
-      { role: 'user', content: buildUserPrompt(request) }
+      { role: 'user',   content: buildUserPrompt(request) }
     ]
   }, {
     headers: {
@@ -319,7 +404,6 @@ async function generateMod(request, onProgress) {
   const modData = extractJSON(aiText.data.choices[0].message.content);
 
   emit('info', 'Writing files...');
-
   for (const filePath of Object.keys(modData.files)) {
     const fullPath = path.join(workDir, filePath);
     await fs.ensureDir(path.dirname(fullPath));
@@ -329,17 +413,10 @@ async function generateMod(request, onProgress) {
   await writeGradleWrapper(workDir, request.mcVersion);
 
   emit('info', 'Building mod...');
-
-  // Pass mcVersion into buildMod so it can pin the correct JAVA_HOME
   await buildMod(workDir, request.mcVersion, emit);
 
   const jarPath = path.join(workDir, 'build/libs');
-
-  emit('done', {
-    workId,
-    modName: modData.modName,
-    jarPath
-  });
+  emit('done', { workId, modName: modData.modName, jarPath });
 
   return { success: true, workId };
 }
