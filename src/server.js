@@ -10,6 +10,7 @@ const expressWs = require('express-ws');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs-extra');
+const crypto = require('crypto');
 
 const { getForgeVersions, getFabricVersions, getNeoForgeVersions } = require('../services/versions');
 const { generateMod } = require('../services/generator');
@@ -17,19 +18,25 @@ const { generateMod } = require('../services/generator');
 const app = express();
 expressWs(app);
 
-// ── Paths ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// PATHS
+// ─────────────────────────────────────────────
+
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
-const SESSIONS_DIR = path.join(__dirname, '..', 'data', 'sessions');
+const SESSIONS_DIR = path.join(__dirname, "..", "data", "sessions");
 fs.ensureDirSync(SESSIONS_DIR);
 
-// ── Middleware ────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// ─────────────────────────────────────────────
+// CHAT STORAGE (FIXED - SINGLE SYSTEM)
+// ─────────────────────────────────────────────
 
-// ── Session Persistence Helpers ───────────────────────────────
+async function loadChat(sessionId) {
+  const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
+  if (!(await fs.pathExists(file))) return [];
+  return await fs.readJson(file);
+}
 
-async function saveMessage(sessionId, message) {
+async function saveChat(sessionId, message) {
   const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
 
   let data = [];
@@ -37,72 +44,84 @@ async function saveMessage(sessionId, message) {
     data = await fs.readJson(file);
   }
 
-  data.push(message);
+  data.push({
+    ...message,
+    timestamp: Date.now()
+  });
 
   await fs.writeJson(file, data, { spaces: 2 });
 }
 
-async function loadSession(sessionId) {
-  const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
+// ─────────────────────────────────────────────
+// MIDDLEWARE
+// ─────────────────────────────────────────────
 
-  if (!await fs.pathExists(file)) return [];
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
-  return await fs.readJson(file);
-}
+// ─────────────────────────────────────────────
+// WEBSOCKET
+// ─────────────────────────────────────────────
 
-// ── WebSocket sessions ────────────────────────────────────────
 const activeSessions = new Map();
 
 app.ws('/ws/:sessionId', async (ws, req) => {
   const { sessionId } = req.params;
 
   activeSessions.set(sessionId, ws);
-  console.log(`[WS] Session connected: ${sessionId}`);
 
-  // ✅ SEND HISTORY ON CONNECT
-  const history = await loadSession(sessionId);
+  console.log(`[WS] Connected: ${sessionId}`);
+
+  // send chat history on reconnect
+  const history = await loadChat(sessionId);
 
   ws.send(JSON.stringify({
-    type: 'history',
+    type: "history",
     messages: history
+  }));
+
+  ws.send(JSON.stringify({
+    type: "connected",
+    message: "🟢 Connected to CodexMC"
   }));
 
   ws.on('close', () => {
     activeSessions.delete(sessionId);
-    console.log(`[WS] Session disconnected: ${sessionId}`);
+    console.log(`[WS] Disconnected: ${sessionId}`);
   });
-
-  ws.send(JSON.stringify({
-    type: 'connected',
-    message: '🟢 Connected to CodexMC server'
-  }));
 });
 
-// ── Send + Save messages ──────────────────────────────────────
+// ─────────────────────────────────────────────
+// SEND + SAVE MESSAGE (FIXED)
+// ─────────────────────────────────────────────
+
 function sendToSession(sessionId, data) {
   const ws = activeSessions.get(sessionId);
 
-  // ✅ SAVE EVERY MESSAGE
-  saveMessage(sessionId, data).catch(() => {});
+  // save EVERY message
+  saveChat(sessionId, data).catch(() => {});
 
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify(data));
   }
 }
 
-// ── API Routes ────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// API: VERSION LISTS
+// ─────────────────────────────────────────────
 
-// Get versions for a loader
 app.get('/api/versions/:loader', async (req, res) => {
   try {
     const { loader } = req.params;
     let versions;
 
     switch (loader.toLowerCase()) {
-      case 'forge':    versions = await getForgeVersions(); break;
-      case 'fabric':   versions = await getFabricVersions(); break;
+      case 'forge': versions = await getForgeVersions(); break;
+      case 'fabric': versions = await getFabricVersions(); break;
       case 'neoforge': versions = await getNeoForgeVersions(); break;
-      default: return res.status(400).json({ error: 'Unknown loader' });
+      default:
+        return res.status(400).json({ error: 'Unknown loader' });
     }
 
     res.json({ loader, versions });
@@ -111,46 +130,38 @@ app.get('/api/versions/:loader', async (req, res) => {
   }
 });
 
-// Generate a mod
+// ─────────────────────────────────────────────
+// API: GENERATE MOD
+// ─────────────────────────────────────────────
+
 app.post('/api/generate', async (req, res) => {
   let { prompt, loader, mcVersion, loaderVersion, sessionId } = req.body;
 
-  // 🔍 DEBUG LOG (helps you see issues instantly)
-  console.log("REQUEST BODY:", req.body);
+  console.log("REQUEST:", req.body);
 
-  // ✅ AUTO-FIX: generate sessionId if missing
   if (!sessionId) {
-    sessionId = require('crypto').randomUUID();
-    console.log("⚠️ Missing sessionId, generated:", sessionId);
+    sessionId = crypto.randomUUID();
   }
 
-  // ✅ AUTO-FIX: allow missing loaderVersion
   if (!loaderVersion) {
     loaderVersion = "latest";
-    console.log("⚠️ Missing loaderVersion, defaulting to 'latest'");
   }
 
-  // ❌ STILL REQUIRE THESE
   if (!prompt || !loader || !mcVersion) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: 'Missing required fields',
-      required: ['prompt', 'loader', 'mcVersion'],
-      received: req.body
+      required: ['prompt', 'loader', 'mcVersion']
     });
   }
 
-  // ✅ respond immediately
-  res.json({ 
+  res.json({
     status: 'generating',
-    sessionId // send back in case frontend didn't have it
+    sessionId
   });
 
-  // 🚀 run generation
   generateMod(
     { prompt, loader, mcVersion, loaderVersion, sessionId },
-    (event) => {
-      sendToSession(sessionId, event);
-    }
+    (event) => sendToSession(sessionId, event)
   )
     .then(result => {
       sendToSession(sessionId, {
@@ -165,7 +176,11 @@ app.post('/api/generate', async (req, res) => {
       });
     });
 });
-// Existing ZIP route (kept)
+
+// ─────────────────────────────────────────────
+// DOWNLOAD ROUTES
+// ─────────────────────────────────────────────
+
 app.get('/api/download/:zipName', async (req, res) => {
   const { zipName } = req.params;
 
@@ -182,9 +197,7 @@ app.get('/api/download/:zipName', async (req, res) => {
   res.download(zipPath, zipName);
 });
 
-// ── NEW DOWNLOAD ROUTES ───────────────────────────────────────
-
-// Source ZIP
+// source
 app.get('/download/source/:id', async (req, res) => {
   const file = path.join(WORKSPACE_DIR, req.params.id, 'source.zip');
 
@@ -195,7 +208,7 @@ app.get('/download/source/:id', async (req, res) => {
   res.download(file);
 });
 
-// Built JAR
+// jar
 app.get('/download/jar/:id', async (req, res) => {
   const dir = path.join(WORKSPACE_DIR, req.params.id, 'build', 'libs');
 
@@ -213,7 +226,10 @@ app.get('/download/jar/:id', async (req, res) => {
   res.download(path.join(dir, jar));
 });
 
-// Health check
+// ─────────────────────────────────────────────
+// HEALTH
+// ─────────────────────────────────────────────
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -222,12 +238,18 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// SPA fallback
+// ─────────────────────────────────────────────
+// SPA FALLBACK
+// ─────────────────────────────────────────────
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// ── Start server ──────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// START SERVER
+// ─────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
