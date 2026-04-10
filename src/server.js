@@ -113,18 +113,39 @@ app.get('/api/versions/:loader', async (req, res) => {
 
 // Generate a mod
 app.post('/api/generate', async (req, res) => {
-  const { prompt, loader, mcVersion, loaderVersion, sessionId } = req.body;
+  let { prompt, loader, mcVersion, loaderVersion, sessionId } = req.body;
 
-  if (!prompt || !loader || !mcVersion || !loaderVersion) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
+  // 🔍 DEBUG LOG (helps you see issues instantly)
+  console.log("REQUEST BODY:", req.body);
 
+  // ✅ AUTO-FIX: generate sessionId if missing
   if (!sessionId) {
-    return res.status(400).json({ error: 'sessionId required' });
+    sessionId = require('crypto').randomUUID();
+    console.log("⚠️ Missing sessionId, generated:", sessionId);
   }
 
-  res.json({ status: 'generating' });
+  // ✅ AUTO-FIX: allow missing loaderVersion
+  if (!loaderVersion) {
+    loaderVersion = "latest";
+    console.log("⚠️ Missing loaderVersion, defaulting to 'latest'");
+  }
 
+  // ❌ STILL REQUIRE THESE
+  if (!prompt || !loader || !mcVersion) {
+    return res.status(400).json({ 
+      error: 'Missing required fields',
+      required: ['prompt', 'loader', 'mcVersion'],
+      received: req.body
+    });
+  }
+
+  // ✅ respond immediately
+  res.json({ 
+    status: 'generating',
+    sessionId // send back in case frontend didn't have it
+  });
+
+  // 🚀 run generation
   generateMod(
     { prompt, loader, mcVersion, loaderVersion, sessionId },
     (event) => {
@@ -144,7 +165,6 @@ app.post('/api/generate', async (req, res) => {
       });
     });
 });
-
 // Existing ZIP route (kept)
 app.get('/api/download/:zipName', async (req, res) => {
   const { zipName } = req.params;
