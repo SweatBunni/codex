@@ -14,9 +14,75 @@ const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
 
 // ─────────────────────────────────────────────
-// GRADLE TEMPLATE LOCATION (NEW)
+// GRADLE TEMPLATE LOCATION
 // ─────────────────────────────────────────────
 const TEMPLATE_GRADLE_DIR = '/srv/codex/gradletmp';
+
+// ─────────────────────────────────────────────
+// JAVA VERSION MAPPING
+// Java class file major versions:
+//   61 = Java 17
+//   65 = Java 21
+//   66 = Java 22
+//   67 = Java 23
+//   68 = Java 24
+//
+// Gradle 8.8 supports up to Java 22 (class version 66).
+// Never let the system Java (which may be 25+) run the build —
+// always resolve an explicit JAVA_*_HOME env var.
+// ─────────────────────────────────────────────
+
+/**
+ * Returns the minimum required Java version for a given MC version,
+ * and the corresponding JAVA_*_HOME env var name to look up.
+ *
+ * MC 1.21+  → Java 21 (Gradle 8.8, class version 65)
+ * MC 1.20.x → Java 17 (Gradle 8.5, class version 61)
+ * MC 1.19.x → Java 17 (Gradle 8.3, class version 61)
+ * Older     → Java 17 (Gradle 8.1, class version 61)
+ */
+function resolveJavaVersion(mcVersion) {
+  if (!mcVersion) return { javaVersion: 17, envKey: 'JAVA_17_HOME' };
+
+  const [, minor] = mcVersion.split('.').map(Number);
+
+  if (minor >= 21) return { javaVersion: 21, envKey: 'JAVA_21_HOME' };
+  return { javaVersion: 17, envKey: 'JAVA_17_HOME' };
+}
+
+/**
+ * Resolves the JAVA_HOME path to use for a given MC version.
+ * Throws if the required env var isn't set — better to fail early
+ * with a clear message than to silently fall back to the system Java
+ * (which may be an unsupported version like 25).
+ */
+function resolveJavaHome(mcVersion) {
+  const { javaVersion, envKey } = resolveJavaVersion(mcVersion);
+
+  const javaHome = process.env[envKey];
+
+  if (!javaHome) {
+    throw new Error(
+      `Required env var ${envKey} is not set. ` +
+      `Please configure Java ${javaVersion} and set ${envKey} to its home directory.`
+    );
+  }
+
+  return javaHome;
+}
+
+// ─────────────────────────────────────────────
+// GRADLE VERSION MAPPING
+// ─────────────────────────────────────────────
+
+function resolveGradleVersion(mcVersion) {
+  if (!mcVersion) return '8.1.1';
+  const [, minor] = mcVersion.split('.').map(Number);
+  if (minor >= 21) return '8.8';
+  if (minor >= 20) return '8.5';
+  if (minor >= 19) return '8.3';
+  return '8.1.1';
+}
 
 // ─────────────────────────────────────────────
 // THINKING LEVEL CONFIG
@@ -117,20 +183,15 @@ async function zipDirectory(sourceDir, outPath) {
 }
 
 // ─────────────────────────────────────────────
-// GRADLE WRAPPER (UPDATED SYSTEM)
+// GRADLE WRAPPER
 // ─────────────────────────────────────────────
 
 async function writeGradleWrapper(workDir, mcVersion) {
   const wrapperDir = path.join(workDir, 'gradle', 'wrapper');
   await fs.ensureDir(wrapperDir);
 
-  // ─────────────────────────────────────────────
-  // COPY REAL WRAPPER FILES
-  // ─────────────────────────────────────────────
-  const files = [
-    'gradle-wrapper.jar',
-    'gradle-wrapper.properties'
-  ];
+  // Copy real wrapper files from template
+  const files = ['gradle-wrapper.jar', 'gradle-wrapper.properties'];
 
   for (const file of files) {
     const src = path.join(TEMPLATE_GRADLE_DIR, 'gradle', 'wrapper', file);
@@ -143,45 +204,29 @@ async function writeGradleWrapper(workDir, mcVersion) {
     await fs.copyFile(src, dest);
   }
 
-  // ─────────────────────────────────────────────
-  // UPDATE GRADLE VERSION
-  // ─────────────────────────────────────────────
-  let gradleVersion = '8.8';
-
-  if (mcVersion?.startsWith('1.21')) gradleVersion = '8.8';
-  else if (mcVersion?.startsWith('1.20')) gradleVersion = '8.5';
-  else if (mcVersion?.startsWith('1.19')) gradleVersion = '8.3';
-  else gradleVersion = '8.1.1';
-
+  // Patch gradle-wrapper.properties with the correct Gradle version
+  const gradleVersion = resolveGradleVersion(mcVersion);
   const propsPath = path.join(wrapperDir, 'gradle-wrapper.properties');
 
   let props = await fs.readFile(propsPath, 'utf8');
-
   props = props.replace(
     /distributionUrl=.*$/m,
     `distributionUrl=https\\://services.gradle.org/distributions/gradle-${gradleVersion}-bin.zip`
   );
-
   await fs.writeFile(propsPath, props, 'utf8');
 
-  // ─────────────────────────────────────────────
-  // REAL gradlew launcher (FIXES 127 ERROR)
-  // ─────────────────────────────────────────────
+  // Write gradlew launcher
   const gradlew = path.join(workDir, 'gradlew');
-
   await fs.writeFile(
     gradlew,
 `#!/bin/sh
 DIR=$(cd "$(dirname "$0")" && pwd)
-
 exec java -jar "$DIR/gradle/wrapper/gradle-wrapper.jar" "$@"
 `
   );
-
   fs.chmodSync(gradlew, 0o755);
 
   const gradlewBat = path.join(workDir, 'gradlew.bat');
-
   await fs.writeFile(
     gradlewBat,
 `@echo off
@@ -195,32 +240,31 @@ java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
 // BUILD SYSTEM
 // ─────────────────────────────────────────────
 
-function buildMod(workDir, emit) {
+function buildMod(workDir, mcVersion, emit) {
   return new Promise((resolve, reject) => {
-    const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-
-    // Detect correct Java version
-    let javaHome = process.env.JAVA_HOME;
-
-    // safer fallback
-    const javaVersion =
-      workDir.includes('1.21') ? '21' :
-      workDir.includes('1.20') ? '17' :
-      '17';
-
-    if (javaVersion === '21') {
-      javaHome = process.env.JAVA_21_HOME || javaHome;
-    } else {
-      javaHome = process.env.JAVA_17_HOME || javaHome;
+    // Resolve the correct JAVA_HOME for this MC version.
+    // This throws early with a clear message if the env var isn't configured,
+    // preventing the system Java (e.g. 25, class version 69) from being used.
+    let javaHome;
+    try {
+      javaHome = resolveJavaHome(mcVersion);
+    } catch (err) {
+      return reject(err);
     }
+
+    const { javaVersion } = resolveJavaVersion(mcVersion);
+    emit('info', `Using Java ${javaVersion} (${javaHome})`);
+
+    const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 
     const proc = spawn(cmd, ['build', '--no-daemon'], {
       cwd: workDir,
       shell: true,
       env: {
         ...process.env,
-        JAVA_HOME: javaHome || process.env.JAVA_HOME,
-        PATH: process.env.PATH,
+        JAVA_HOME: javaHome,
+        // Prepend the correct JDK bin dir so 'java' resolves to the right version.
+        PATH: `${path.join(javaHome, 'bin')}${path.delimiter}${process.env.PATH}`,
       },
     });
 
@@ -282,12 +326,12 @@ async function generateMod(request, onProgress) {
     await fs.writeFile(fullPath, modData.files[filePath]);
   }
 
-  // ✅ UPDATED: wrapper system
   await writeGradleWrapper(workDir, request.mcVersion);
 
   emit('info', 'Building mod...');
 
-  await buildMod(workDir, emit);
+  // Pass mcVersion into buildMod so it can pin the correct JAVA_HOME
+  await buildMod(workDir, request.mcVersion, emit);
 
   const jarPath = path.join(workDir, 'build/libs');
 
