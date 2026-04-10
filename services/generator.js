@@ -255,7 +255,7 @@ For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
 fabric.mod.json: 
 {
   "schemaVersion": 1,
-  "id": "${modId}",
+
   "version": "1.0.0",
   "name": "${modName}",
   "main": "${package}.YourMod",
