@@ -1,6 +1,9 @@
 /**
- * CodexMC AI Generation Service
- * Now includes Gradle wrapper template system + auto Java detection
+ * CodexMC AI Generation Service (ULTIMATE VERSION)
+ * - Self-healing AI generator
+ * - Auto compile validation
+ * - Retry systems
+ * - Java + Gradle safety layer
  */
 
 const axios = require('axios');
@@ -195,6 +198,75 @@ function getFabricLoomVersion(mcVersion) {
   return versionMap[majorMinor] || versionMap.default;
 }
 
+// ─────────────────────────────────────────────
+// RETRY WRAPPER (AI + BUILD)
+// ─────────────────────────────────────────────
+
+async function retry(fn, times = 2) {
+  let last;
+  for (let i = 0; i <= times; i++) {
+    try { return await fn(i); }
+    catch (e) { last = e; }
+  }
+  throw last;
+}
+
+// ─────────────────────────────────────────────
+// AUTO FIX SYSTEMS
+// ─────────────────────────────────────────────
+
+function autoFixJava(files) {
+  const out = {};
+
+  for (const [file, content] of Object.entries(files)) {
+    if (!file.endsWith('.java')) {
+      out[file] = content;
+      continue;
+    }
+
+    let code = content;
+    const name = path.basename(file, '.java');
+
+    if (!code.includes(`class ${name}`)) {
+      code = code.replace(/public class \w+/, `public class ${name}`);
+    }
+
+    if (!code.includes('package ') && file.includes('java')) {
+      const pkg = file
+        .split('/')
+        .slice(0, -1)
+        .join('.')
+        .replace('src.main.java.', '');
+      code = `package ${pkg};\n\n` + code;
+    }
+
+    out[file] = code;
+  }
+
+  return out;
+}
+
+async function fixGradle(workDir) {
+  const file = path.join(workDir, 'build.gradle');
+  if (!await fs.pathExists(file)) return;
+
+  let g = await fs.readFile(file, 'utf8');
+
+  if (!g.includes('mavenCentral')) {
+    g = 'repositories { mavenCentral() }\n' + g;
+  }
+
+  await fs.writeFile(file, g);
+}
+
+// ─────────────────────────────────────────────
+// VALIDATION
+// ─────────────────────────────────────────────
+
+function validate(mod) {
+  if (!mod.files) throw new Error('Missing files');
+  if (!mod.modId) throw new Error('Missing modId');
+}
 
 // ─────────────────────────────────────────────
 // THINKING LEVEL CONFIG
@@ -300,9 +372,11 @@ IMPORTANT:
 
 Return ONLY valid JSON:
 {
-  "modName": "ExampleMod",
-  "modId": "examplemod",
-  "packageName": "com.yourname.examplemod",
+"name": "ExampleMod",
+"main": "com.example.mod.YourMod",
+"entrypoints": { "main": ["com.example.mod.YourMod"] },
+...
+"package": "com.yourname.examplemod"
   "mcVersion": "${mcVersion}",
   "files": {
     "build.gradle": "COMPLETE build script",
@@ -473,7 +547,7 @@ async function generateMod(request, onProgress) {
   await fs.ensureDir(workDir);
   emit('info', 'Starting AI generation...');
 
-  const aiText = await axios.post(OPENROUTER_API, {
+  const aiText = await retry(async () => axios.post(OPENROUTER_API, {
     model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
     messages: [
       { role: 'system', content: buildSystemPrompt(request, request.thinkingLevel) },
@@ -484,9 +558,11 @@ async function generateMod(request, onProgress) {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json'
     }
-  });
+  }));
 
   const modData = extractJSON(aiText.data.choices[0].message.content);
+  validate(modData);
+  modData.files = autoFixJava(modData.files);
 
 
   for (const filePath of Object.keys(modData.files)) {
@@ -495,9 +571,10 @@ async function generateMod(request, onProgress) {
     await fs.writeFile(fullPath, modData.files[filePath]);
   }
 
+  await fixGradle(workDir);
   await writeGradleWrapper(workDir, request.mcVersion);
   emit('info', 'Building mod...');
-  await buildMod(workDir, request.mcVersion, emit);
+  await retry(() => buildMod(workDir, request.mcVersion, emit));
 
   const jarPath = path.join(workDir, 'build/libs');
   emit('done', { workId, modName: modData.modName, jarPath });
