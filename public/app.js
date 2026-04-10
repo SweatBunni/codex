@@ -245,7 +245,6 @@ function renderHistory() {
         <div class="history-item-title">${escapeHtml(session.title)}</div>
         <div class="history-item-meta">${session.loader} · MC ${session.mcVersion}</div>
         <div class="history-actions">
-          <button onclick="openSession('${session.id}')">Open</button>
           <button onclick="renamePrompt('${session.id}')">Rename</button>
           <button onclick="deleteSession('${session.id}')">Delete</button>
         </div>
@@ -266,9 +265,17 @@ function openSession(id) {
   const s = getSession(id);
   if (!s) return;
 
+  // Hide welcome screen, show session messages
+  const welcome = document.getElementById('welcome-state');
+  if (welcome) welcome.style.display = 'none';
+
+  // Clear any stale console messages from a previous session
+  const msgs = document.getElementById('messages');
+  if (msgs) msgs.innerHTML = '';
+
+  // Update active highlight in sidebar
   document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
-  const target = document.querySelector(`.history-item[data-id="${id}"]`);
-  if (target) target.classList.add('active');
+  renderHistory(); // re-render so active class is applied via className logic
 
   renderMessages(id);
 }
