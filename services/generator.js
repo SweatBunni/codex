@@ -19,7 +19,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
 
 function buildSystemPrompt() {
   return `
-You are an expert Minecraft mod developer.
+You are an expert Minecraft mod developer.del
 
 Return ONLY valid JSON.
 No markdown. No backticks. No explanations.
@@ -150,7 +150,7 @@ async function callAI(messages, retries = 3) {
     const res = await axios.post(
       OPENROUTER_API,
       {
-        model: "mistralai/mistral-small-3.1-24b-instruct:free",
+        model: "minimax/minimax-m2.5:free",
         messages,
         temperature: 0.3,
         max_tokens: 4000 // 🔴 LOWER THIS (12000 causes 400 sometimes)
