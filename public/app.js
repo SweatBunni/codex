@@ -1,16 +1,5 @@
 /**
- * CodexMC — Frontend App (v2 UPGRADED)
- * Features:
- * - Thinking levels
- * - JAR + ZIP downloads
- * - WebSocket live console
- * - Version management
- * - Session history (persistent)
- * - Chat branching (fork conversations)
- * - Message regeneration
- * - Delete / rename sessions
- * - Search history
- * - Resume generation
+ * CodexMC — Frontend App
  */
 
 // ════════════════════════════════════════════════════════
@@ -28,8 +17,6 @@ const state = {
   isGenerating: false,
   activeConsoleId: null,
   thinkingLevel: 'medium',
-
-  // CHAT SYSTEM
   sessions: loadSessions(),
   activeSessionId: null,
   searchQuery: ''
@@ -108,31 +95,6 @@ function updateSession(id, updater) {
 }
 
 // ════════════════════════════════════════════════════════
-//  CHAT BRANCHING
-// ════════════════════════════════════════════════════════
-
-function forkSession(messageIndex) {
-  const parent = getSession(state.activeSessionId);
-  if (!parent) return;
-
-  const fork = {
-    ...structuredClone(parent),
-    id: generateUUID(),
-    title: parent.title + ' (fork)',
-    parentId: parent.id,
-    createdAt: Date.now()
-  };
-
-  fork.messages = parent.messages.slice(0, messageIndex + 1);
-
-  state.sessions.unshift(fork);
-  state.activeSessionId = fork.id;
-
-  saveSessions();
-  renderHistory();
-}
-
-// ════════════════════════════════════════════════════════
 //  MESSAGE REGISTRY
 // ════════════════════════════════════════════════════════
 
@@ -140,44 +102,15 @@ function addMessage(role, content, meta = {}) {
   const session = getSession(state.activeSessionId);
   if (!session) return;
 
-  const msg = {
+  session.messages.push({
     id: generateUUID(),
     role,
     content,
     meta,
     timestamp: Date.now()
-  };
-
-  session.messages.push(msg);
-  saveSessions();
-  renderMessages(session.id);
-}
-
-// ════════════════════════════════════════════════════════
-//  REGENERATION
-// ════════════════════════════════════════════════════════
-
-function regenerateMessage(messageId) {
-  const session = getSession(state.activeSessionId);
-  if (!session) return;
-
-  const index = session.messages.findIndex(m => m.id === messageId);
-  if (index === -1) return;
-
-  const original = session.messages[index];
-  session.messages = session.messages.slice(0, index);
+  });
 
   saveSessions();
-  renderMessages(session.id);
-
-  if (original.role === 'user') {
-    resendPrompt(original.content);
-  }
-}
-
-function resendPrompt(prompt) {
-  document.getElementById('prompt-input').value = prompt;
-  sendPrompt();
 }
 
 // ════════════════════════════════════════════════════════
@@ -206,15 +139,6 @@ function renamePrompt(id) {
 }
 
 // ════════════════════════════════════════════════════════
-//  HISTORY SEARCH
-// ════════════════════════════════════════════════════════
-
-function searchHistory(query) {
-  state.searchQuery = query.toLowerCase();
-  renderHistory();
-}
-
-// ════════════════════════════════════════════════════════
 //  HISTORY RENDER
 // ════════════════════════════════════════════════════════
 
@@ -231,7 +155,7 @@ function renderHistory() {
   );
 
   if (!sessions.length) {
-    el.innerHTML = `<div class="history-empty">No sessions found</div>`;
+    el.innerHTML = `<div class="history-empty">No sessions yet</div>`;
     return;
   }
 
@@ -241,7 +165,7 @@ function renderHistory() {
 
     div.innerHTML = `
       <div class="history-item-icon">${session.icon || '🎮'}</div>
-      <div>
+      <div class="history-item-body">
         <div class="history-item-title">${escapeHtml(session.title)}</div>
         <div class="history-item-meta">${session.loader} · MC ${session.mcVersion}</div>
         <div class="history-actions">
@@ -265,18 +189,13 @@ function openSession(id) {
   const s = getSession(id);
   if (!s) return;
 
-  // Hide welcome screen, show session messages
   const welcome = document.getElementById('welcome-state');
   if (welcome) welcome.style.display = 'none';
 
-  // Clear any stale console messages from a previous session
   const msgs = document.getElementById('messages');
   if (msgs) msgs.innerHTML = '';
 
-  // Update active highlight in sidebar
-  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
-  renderHistory(); // re-render so active class is applied via className logic
-
+  renderHistory();
   renderMessages(id);
 }
 
@@ -291,14 +210,10 @@ function renderMessages(sessionId) {
   const msgs = document.getElementById('messages');
   msgs.innerHTML = '';
 
-  session.messages.forEach((m, i) => {
+  session.messages.forEach(m => {
     const div = document.createElement('div');
     div.className = m.role === 'user' ? 'msg-user' : 'msg-ai';
-
-    div.innerHTML = `
-      <div class="msg-content">${escapeHtml(m.content)}</div>
-    `;
-
+    div.innerHTML = `<div class="msg-content">${escapeHtml(m.content)}</div>`;
     msgs.appendChild(div);
   });
 
@@ -313,7 +228,7 @@ function initCanvas() {
   const canvas = document.getElementById('bg-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  let W, H, particles, raf;
+  let W, H, particles;
 
   function resize() {
     W = canvas.width = window.innerWidth;
@@ -348,10 +263,8 @@ function initCanvas() {
 
     for (const p of particles) {
       p.x += p.vx; p.y += p.vy;
-      if (p.x < 0) p.x = W;
-      if (p.x > W) p.x = 0;
-      if (p.y < 0) p.y = H;
-      if (p.y > H) p.y = 0;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(74,222,128,${p.alpha})`;
@@ -374,7 +287,7 @@ function initCanvas() {
       }
     }
 
-    raf = requestAnimationFrame(draw);
+    requestAnimationFrame(draw);
   }
 
   resize();
@@ -416,13 +329,11 @@ function newMod() {
   const welcome = document.getElementById('welcome-state');
   if (welcome) welcome.style.display = '';
 
-  document.querySelectorAll('.history-item')
-    .forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
 
   const inp = document.getElementById('prompt-input');
   if (inp) { inp.value = ''; autoResize(inp); inp.focus(); }
 }
-
 
 // ════════════════════════════════════════════════════════
 //  WEBSOCKET
@@ -457,44 +368,26 @@ function connectWS() {
 function handleWsMessage(msg) {
   const { type, message } = msg;
 
-  if (type === 'history') return;
-  if (type === 'connected') {
-    liveConsoleAppend('info', 'WebSocket connected');
-    return;
-  }
+  if (type === 'history' || type === 'connected') return;
+
   if (type === 'done') {
-    liveConsoleAppend('success', '✔ Build complete');
-    updateLcSubtitle('idle');
     onGenerationDone(msg);
     return;
   }
   if (type === 'error') {
-    liveConsoleAppend('error', '✖ ' + message);
-    updateLcSubtitle('error');
     onGenerationError(message);
     return;
   }
   if (type === 'thinking_start') {
-    liveConsoleAppend('info', `[thinking] ${msg.level} reasoning started`);
     showThinkingIndicator(msg.level);
     return;
   }
   if (type === 'thinking_end') {
-    liveConsoleAppend('info', '[thinking] reasoning complete');
     hideThinkingIndicator();
     return;
   }
 
-  // Mirror all build/warn/info/file/ai output to live console
-  liveConsoleAppend(type, message);
   appendConsoleOutput(type, message);
-}
-
-function updateLcSubtitle(status) {
-  const el = document.getElementById('lc-subtitle');
-  if (!el) return;
-  el.textContent = status;
-  el.className = 'lc-subtitle lc-sub-' + status;
 }
 
 function setStatus(s, text) {
@@ -628,11 +521,9 @@ async function sendPrompt() {
 
   const { mcVersion, loaderVersion } = versionData;
 
-  // Hide welcome state
   const welcome = document.getElementById('welcome-state');
   if (welcome) welcome.style.display = 'none';
 
-  // Render user bubble
   addUserMessage(prompt, loader, mcVersion, thinkingLevel);
 
   promptInput.value = '';
@@ -643,7 +534,6 @@ async function sendPrompt() {
   const consoleId = 'c-' + Date.now();
   addConsoleMessage(consoleId, loader, mcVersion, thinkingLevel);
 
-  // Create or continue session
   if (!state.activeSessionId) {
     createSession(prompt, loader, mcVersion, consoleId);
   } else {
@@ -804,7 +694,7 @@ function onGenerationDone(result) {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download .jar
       </a>`
-    : `<span class="dl-btn dl-btn-source" style="opacity:0.5;cursor:not-allowed" title="Build failed — source available instead">
+    : `<span class="dl-btn dl-btn-source" style="opacity:0.5;cursor:not-allowed">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         Build failed
       </span>`;
@@ -816,16 +706,12 @@ function onGenerationDone(result) {
       </a>`
     : '';
 
-  const buildNote = buildSuccess
-    ? '✅ Compiled JAR + full source ready'
-    : '⚠️ JAR build failed — source files ready';
-
   dlArea.innerHTML = `
     <div class="download-area">
       <div class="download-card">
         <div class="download-card-header">
           <div class="download-card-title">🎉 ${escapeHtml(modName || 'Your Mod')} is ready!</div>
-          <div class="download-card-meta">${buildNote}</div>
+          <div class="download-card-meta">${buildSuccess ? '✅ Compiled JAR + full source ready' : '⚠️ JAR build failed — source files ready'}</div>
         </div>
         <div class="download-buttons">
           ${jarHtml}
@@ -834,7 +720,6 @@ function onGenerationDone(result) {
       </div>
     </div>`;
 
-  // Persist AI reply in session
   addMessage('ai', modName ? `${modName} generated successfully` : 'Generation complete', result);
 
   setGenerating(false);
@@ -863,10 +748,6 @@ function setGenerating(val) {
   const inp = document.getElementById('prompt-input');
   if (btn) btn.disabled = val;
   if (inp) inp.disabled = val;
-  if (val) {
-    liveConsoleAppend('info', '— Generation started —');
-    updateLcSubtitle('generating');
-  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -909,126 +790,6 @@ function useExample(btn) {
 //  LANDING TERMINAL ANIMATION
 // ════════════════════════════════════════════════════════
 
-// ════════════════════════════════════════════════════════
-//  LIVE CONSOLE PANEL
-// ════════════════════════════════════════════════════════
-
-function toggleLiveConsole() {
-  state.consoleOpen = !state.consoleOpen;
-  const panel   = document.getElementById('live-console-panel');
-  const btn     = document.getElementById('console-toggle-btn');
-  const appPage = document.getElementById('app-page');
-  if (!panel) return;
-
-  if (state.consoleOpen) {
-    panel.classList.add('open');
-    if (btn) btn.classList.add('active');
-    if (appPage) appPage.classList.add('console-open');
-    scrollLiveConsole();
-  } else {
-    panel.classList.remove('open');
-    if (btn) btn.classList.remove('active');
-    if (appPage) appPage.classList.remove('console-open');
-  }
-}
-
-function liveConsoleAppend(type, text) {
-  if (!text) return;
-  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
-
-  String(text).split('\n').forEach(line => {
-    if (!line.trim()) return;
-    state.consoleLog.push({ type, text: line, ts });
-    if (state.consoleLog.length > 500) state.consoleLog.shift();
-
-    const output = document.getElementById('live-console-output');
-    if (!output) return;
-
-    const row = document.createElement('div');
-    row.className = 'lc-line lc-' + type;
-    row.innerHTML = `<span class="lc-ts">\${ts}</span><span class="lc-text">\${escapeLiveConsole(line)}</span>`;
-    output.appendChild(row);
-
-    if (output.scrollHeight - output.scrollTop - output.clientHeight < 80) {
-      scrollLiveConsole();
-    }
-
-    if (!state.consoleOpen) {
-      const btn = document.getElementById('console-toggle-btn');
-      if (btn) {
-        btn.classList.add('has-new');
-        clearTimeout(btn._flashTimer);
-        btn._flashTimer = setTimeout(() => btn.classList.remove('has-new'), 2000);
-      }
-    }
-  });
-}
-
-function clearLiveConsole() {
-  state.consoleLog = [];
-  const output = document.getElementById('live-console-output');
-  if (output) output.innerHTML = '';
-}
-
-function scrollLiveConsole() {
-  const output = document.getElementById('live-console-output');
-  if (output) output.scrollTop = output.scrollHeight;
-}
-
-function escapeLiveConsole(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function injectLiveConsoleDOM() {
-  const panel = document.createElement('div');
-  panel.id = 'live-console-panel';
-  panel.innerHTML = `
-    <div class="lc-titlebar">
-      <div class="lc-titlebar-left">
-        <div class="console-dots">
-          <div class="console-dot" style="background:#ff5f57"></div>
-          <div class="console-dot" style="background:#ffbd2e"></div>
-          <div class="console-dot" style="background:#28c840"></div>
-        </div>
-        <span class="lc-title">Live Console</span>
-        <span class="lc-subtitle" id="lc-subtitle">idle</span>
-      </div>
-      <div class="lc-titlebar-right">
-        <button class="lc-btn" onclick="clearLiveConsole()" title="Clear">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-          Clear
-        </button>
-        <button class="lc-btn lc-btn-close" onclick="toggleLiveConsole()" title="Hide console">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
-        </button>
-      </div>
-    </div>
-    <div class="lc-output" id="live-console-output"></div>
-  `;
-
-  const appPage = document.getElementById('app-page');
-  if (appPage) appPage.appendChild(panel);
-
-  const topbarRight = document.querySelector('.topbar-right');
-  if (topbarRight) {
-    const btn = document.createElement('button');
-    btn.id = 'console-toggle-btn';
-    btn.className = 'topbar-console-btn';
-    btn.title = 'Toggle live console';
-    btn.onclick = toggleLiveConsole;
-    btn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
-      </svg>
-      Console
-    `;
-    topbarRight.prepend(btn);
-  }
-}
-
 function animateTerminal() {
   const body = document.getElementById('terminal-preview-body');
   if (!body) return;
@@ -1060,7 +821,6 @@ function animateTerminal() {
 document.addEventListener('DOMContentLoaded', () => {
   initCanvas();
   animateTerminal();
-  injectLiveConsoleDOM();
 
   const thinkingSelect = document.getElementById('thinking-select');
   if (thinkingSelect) thinkingSelect.addEventListener('change', onThinkingChange);
