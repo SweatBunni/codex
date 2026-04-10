@@ -109,7 +109,7 @@ async function generateMod(request, onProgress) {
     const response = await axios.post(
       OPENROUTER_API,
       {
-        model: "nvidia/nemotron-3-super-120b-a12b:free",
+        model: "minimax/minimax-m2.5:free",
         temperature: 0.4,
 
         // ✅ IMPORTANT FIX
