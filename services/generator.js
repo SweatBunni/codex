@@ -186,26 +186,6 @@ async function callAI(messages, retries = 3) {
     return callAI(messages, retries - 1);
   }
 }
-    const data = res.data;
-
-    if (data.error) {
-      throw new Error(data.error.message);
-    }
-
-    const content = data?.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("Empty AI response");
-    }
-
-    return content;
-  } catch (err) {
-    if (retries <= 0) throw err;
-    await new Promise(r => setTimeout(r, 1500));
-    return callAI(messages, retries - 1);
-  }
-}
-
 // ─────────────────────────────────────────────
 // MAIN FUNCTION
 // ─────────────────────────────────────────────
