@@ -1146,6 +1146,37 @@ kbd {
   font-size: 11px;
 }
 
+
+where do i add this /* ── History item actions ── */
+.history-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 5px;
+}
+.history-actions button {
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  line-height: 1.6;
+}
+.history-actions button:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+  background: var(--bg-3);
+}
+/* Delete button gets a subtle red tint on hover */
+.history-actions button:last-child:hover {
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.07);
+}
 /* ════════════════════════════════════════════════════════
    UTILITIES & TRANSITIONS
 ════════════════════════════════════════════════════════ */
