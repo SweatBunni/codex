@@ -461,18 +461,18 @@ IMPORTANT:
 - Java package: com.yourname.modidwithouyhyphens
 - Return COMPLETE file contents with newlines escaped as \\n
 
-Return ONLY valid JSON with EXACT file contents:
+Return ONLY valid JSON (NO markdown, NO code blocks, just raw JSON):
 {
   "modName": "YourModName",
   "modId": "yourmodid",
   "packageName": "com.yourname.yourmodid",
   "mcVersion": "${mcVersion}",
   "files": {
-    "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}",
-    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\nrepositories {\\n  mavenCentral()\\n}\\nversion = '1.0.0'\\n...",
-    "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\nminecraft_version=${mcVersion}\\n...",
-    "src/main/resources/fabric.mod.json": "{ ... complete json ... }",
-    "src/main/java/com/yourname/yourmodid/YourMod.java": "package com.yourname.yourmodid;\\npublic class YourMod { ... }"
+    "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}\\n",
+    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\ngroup = 'com.yourname'\\nversion = '1.0'\\n\\nrepositories {\\n  mavenCentral()\\n  maven { url = 'https://maven.fabricmc.net/' }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings 'net.fabricmc:yarn:${mcVersion}+build.1:v2'\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.0'\\n}\\n",
+    "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\nminecraft_version=${mcVersion}\\nfabric_version=0.100.0\\n",
+    "src/main/resources/fabric.mod.json": "{\\n  \\"schemaVersion\\": 1,\\n  \\"id\\": \\"yourmodid\\",\\n  \\"version\\": \\"1.0.0\\",\\n  \\"name\\": \\"YourModName\\",\\n  \\"description\\": \\"A mod\\",\\n  \\"authors\\": [\\"You\\"],\\n  \\"environment\\": \\"*\\",\\n  \\"entrypoints\\": {\\n    \\"main\\": [\\"com.yourname.yourmodid.YourMod\\"]\\n  },\\n  \\"mixins\\": [],\\n  \\"depends\\": {\\n    \\"fabricloader\\": \\">=0.14.0\\",\\n    \\"minecraft\\": \\"${mcVersion}\\",\\n    \\"java\\": \\">=17\\"\\n  }\\n}\\n",
+    "src/main/java/com/yourname/yourmodid/YourMod.java": "package com.yourname.yourmodid;\\n\\nimport net.fabricmc.api.ModInitializer;\\nimport org.slf4j.Logger;\\nimport org.slf4j.LoggerFactory;\\n\\npublic class YourMod implements ModInitializer {\\n  public static final Logger LOGGER = LoggerFactory.getLogger(\\"yourmodid\\");\\n\\n  @Override\\n  public void onInitialize() {\\n    LOGGER.info(\\"Hello from YourMod!\\");\\n  }\\n}\\n"
   }
 }`;
 }
@@ -497,14 +497,31 @@ function extractJSON(text) {
     .trim();
 
   const start = cleaned.indexOf('{');
+  if (start === -1) throw new Error('No JSON object found in AI response');
+  
   let json = cleaned.slice(start);
 
-  try { return JSON.parse(json); } catch {}
-
-  const last = json.lastIndexOf('}');
-  if (last !== -1) return JSON.parse(json.slice(0, last + 1));
-
-  throw new Error('Invalid JSON from AI response');
+  try { 
+    return JSON.parse(json); 
+  } catch (e) {
+    // Try to find and fix common JSON issues
+    // Remove trailing commas before } or ]
+    json = json.replace(/,(\s*[}\]])/g, '$1');
+    
+    try {
+      return JSON.parse(json);
+    } catch (e2) {
+      const last = json.lastIndexOf('}');
+      if (last !== -1) {
+        try {
+          return JSON.parse(json.slice(0, last + 1));
+        } catch (e3) {
+          throw new Error(`Invalid JSON from AI response: ${e.message}\nPosition: ${e.message.match(/position (\d+)/)}`);
+        }
+      }
+      throw new Error(`Invalid JSON from AI response: ${e.message}`);
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
