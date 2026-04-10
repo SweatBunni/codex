@@ -196,6 +196,7 @@ function buildMod(workDir, emit) {
   return new Promise((resolve, reject) => {
     const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 
+    // Ensure wrapper is executable
     try {
       const gw = path.join(workDir, 'gradlew');
       if (fs.existsSync(gw)) fs.chmodSync(gw, '755');
@@ -204,15 +205,28 @@ function buildMod(workDir, emit) {
     const proc = spawn(cmd, ['build', '--no-daemon'], {
       cwd: workDir,
       shell: true,
-      env: { ...process.env, JAVA_HOME: getJavaHome('17') },
+      env: {
+        ...process.env,
+        JAVA_HOME: getJavaHome('17'),
+      },
     });
 
-    proc.stdout.on('data', d => emit('build', d.toString()));
-    proc.stderr.on('data', d => emit('warn', d.toString()));
-
-    proc.on('close', code =>
-      code === 0 ? resolve() : reject(new Error(`Gradle exited ${code}`))
+    proc.stdout.on('data', d =>
+      d.toString().split('\n').forEach(l => l.trim() && emit('build', l))
     );
+
+    proc.stderr.on('data', d =>
+      d.toString().split('\n').forEach(l => l.trim() && emit('warn', l))
+    );
+
+    proc.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(`Gradle exited ${code}`));
+    });
+
+    proc.on('error', err => {
+      reject(new Error(`Failed to start Gradle wrapper: ${err.message}`));
+    });
   });
 }
 
