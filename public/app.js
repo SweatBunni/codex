@@ -25,7 +25,22 @@ function generateUUID() {
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 }
+const HISTORY_KEY = 'codexmc_history_v1';
 
+state.history = loadHistory();
+
+
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory() {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+}
 // ════════════════════════════════════════════════════════
 //  BACKGROUND CANVAS
 // ════════════════════════════════════════════════════════
@@ -557,33 +572,66 @@ function setGenerating(val) {
 // ════════════════════════════════════════════════════════
 //  HISTORY
 // ════════════════════════════════════════════════════════
+function renderHistory() {
+  const historyEl = document.getElementById('chat-history');
+  if (!historyEl) return;
 
-function addHistoryItem(prompt, loader, mcVersion, consoleId) {
-  const history = document.getElementById('chat-history');
-  const empty = history.querySelector('.history-empty');
-  if (empty) empty.remove();
+  historyEl.innerHTML = '';
 
-  const icon = { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
+  if (!state.history.length) {
+    historyEl.innerHTML = `<div class="history-empty">No history yet</div>`;
+    return;
+  }
 
-  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+  state.history.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
 
-  const item = document.createElement('div');
-  item.className = 'history-item active';
-  item.innerHTML = `
-    <div class="history-item-icon">${icon}</div>
-    <div>
-      <div class="history-item-title">${escapeHtml(prompt.slice(0, 38))}${prompt.length > 38 ? '…' : ''}</div>
-      <div class="history-item-meta">${loader} · MC ${mcVersion}</div>
-    </div>`;
-  item.onclick = () => {
-    document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
-    item.classList.add('active');
-    document.getElementById('msg-' + consoleId)?.scrollIntoView({ behavior: 'smooth' });
-  };
+    div.innerHTML = `
+      <div class="history-item-icon">${item.icon}</div>
+      <div>
+        <div class="history-item-title">
+          ${escapeHtml(item.prompt.slice(0, 38))}${item.prompt.length > 38 ? '…' : ''}
+        </div>
+        <div class="history-item-meta">${item.loader} · MC ${item.mcVersion}</div>
+      </div>
+    `;
 
-  history.insertBefore(item, history.firstChild);
+    div.onclick = () => {
+      document.querySelectorAll('.history-item')
+        .forEach(el => el.classList.remove('active'));
+
+      div.classList.add('active');
+
+      document.getElementById('msg-' + item.id)
+        ?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    historyEl.appendChild(div);
+  });
 }
 
+function addHistoryItem(prompt, loader, mcVersion, consoleId) {
+  const icon = { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
+
+  const item = {
+    id: consoleId,
+    prompt,
+    loader,
+    mcVersion,
+    icon,
+    timestamp: Date.now()
+  };
+
+  state.history.unshift(item);
+
+  if (state.history.length > 50) {
+    state.history.pop();
+  }
+
+  saveHistory();     // ❗ THIS was missing
+  renderHistory();   // redraw UI
+}
 function newSession() {
   document.getElementById('messages').innerHTML = '';
   const welcome = document.getElementById('welcome-state');
@@ -678,15 +726,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initCanvas();
   animateTerminal();
 
-  // Wire thinking select
   const thinkingSelect = document.getElementById('thinking-select');
-  if (thinkingSelect) {
-    thinkingSelect.addEventListener('change', onThinkingChange);
-  }
+  if (thinkingSelect) thinkingSelect.addEventListener('change', onThinkingChange);
 
-  // Wire loader select
   const loaderSelect = document.getElementById('loader-select');
-  if (loaderSelect) {
-    loaderSelect.addEventListener('change', onLoaderChange);
-  }
+  if (loaderSelect) loaderSelect.addEventListener('change', onLoaderChange);
+
+  renderHistory(); // ❗ THIS is required on refresh
 });
