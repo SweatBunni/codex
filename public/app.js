@@ -1,4 +1,4 @@
-fix my chat history saver its not saving them at all when i refresh or anything /**
+/**
  * CodexMC — Frontend App
  * Features: thinking levels, JAR download, source ZIP download,
  * WebSocket live console, version management, session history
