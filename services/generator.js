@@ -291,6 +291,35 @@ async function fixSettings(workDir) {
       await fs.writeFile(buildFile, build);
     }
   }
+
+  // Validate and fix settings.gradle syntax
+  if (await fs.pathExists(settingsFile)) {
+    let settings = await fs.readFile(settingsFile, 'utf8');
+    
+    // Fix common mistake: Fabric() method instead of proper maven block
+    if (settings.includes('Fabric()') || settings.includes('Fabric {')) {
+      settings = settings.replace(
+        /Fabric\s*\{[^}]*\}/g,
+        `maven {
+      name = 'Fabric'
+      url = 'https://maven.fabricmc.net/'
+    }`
+      );
+    }
+    
+    // Fix: missing proper maven block syntax
+    if (settings.includes('maven {') && !settings.includes('name =')) {
+      settings = settings.replace(
+        /maven\s*\{\s*url\s*=\s*['"]https:\/\/maven\.fabricmc\.net\/["']\s*\}/g,
+        `maven {
+      name = 'Fabric'
+      url = 'https://maven.fabricmc.net/'
+    }`
+      );
+    }
+    
+    await fs.writeFile(settingsFile, settings);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -343,10 +372,13 @@ function buildSystemPrompt(request, thinkingLevel) {
     loaderInstructions = `
 CRITICAL FABRIC REQUIREMENTS:
 
-settings.gradle MUST contain:
+settings.gradle EXACT FORMAT (copy this exactly):
 pluginManagement {
   repositories {
-    maven { name = 'Fabric' url = 'https://maven.fabricmc.net/' }
+    maven {
+      name = 'Fabric'
+      url = 'https://maven.fabricmc.net/'
+    }
     gradlePluginPortal()
   }
 }
@@ -357,18 +389,36 @@ plugins {
   id 'maven-publish'
 }
 
-IMPORTANT: pluginManagement goes in settings.gradle, NOT build.gradle!
+repositories {
+  mavenCentral()
+  maven {
+    name = 'Fabric'
+    url = 'https://maven.fabricmc.net/'
+  }
+}
 
 For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
 
-fabric.mod.json: 
+fabric.mod.json EXACT FORMAT: 
 {
   "schemaVersion": 1,
   "version": "1.0.0",
   "name": "Your Mod Name",
-  "main": "com.example.yourmod.YourMod",
-  "entrypoints": { "main": ["com.example.yourmod.YourMod"] },
-  "depends": { "fabricloader": ">=0.14.0", "minecraft": "${mcVersion}", "java": ">=17", "fabric-api": "*" }
+  "description": "A simple mod",
+  "authors": ["You"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.yourmod.YourMod"]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.14.0",
+    "minecraft": "${mcVersion}",
+    "java": ">=17"
+  }
 }`;
   } else if (loader === 'forge') {
     loaderInstructions = `
@@ -401,24 +451,28 @@ ${loaderInstructions}
 
 IMPORTANT:
 - Use EXACT plugin versions above. NO other versions or SNAPSHOT unless specified.
-- All files must be COMPLETE and valid.
-- Include all required files: settings.gradle, build.gradle, gradle.properties, src/main/.../mod init class, fabric.mod.json/mods.toml/pack.mcmeta
-- Mod ID: lowercase with hyphens
-- Java package: com.yourname.<modid-without-hyphens>
-- For Fabric: ALWAYS create both settings.gradle (with pluginManagement) AND build.gradle (with plugins)
+- All files must be COMPLETE and valid Gradle syntax.
+- Include BOTH settings.gradle AND build.gradle (Fabric requires both)
+- settings.gradle: MUST have pluginManagement with maven { name='Fabric' url='...' }
+- build.gradle: MUST have plugins block FIRST, then repositories
+- Do NOT put pluginManagement in build.gradle - it ONLY goes in settings.gradle
+- Gradle syntax: proper indentation, correct { } braces, name and url on separate lines
+- Mod ID: lowercase with hyphens only
+- Java package: com.yourname.modidwithouyhyphens
+- Return COMPLETE file contents with newlines escaped as \\n
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with EXACT file contents:
 {
   "modName": "YourModName",
   "modId": "yourmodid",
   "packageName": "com.yourname.yourmodid",
   "mcVersion": "${mcVersion}",
   "files": {
-    "settings.gradle": "pluginManagement { repositories { ... } }",
-    "build.gradle": "plugins { ... } repositories { ... } dependencies { ... }",
-    "gradle.properties": "...",
-    "src/main/resources/fabric.mod.json": "...",
-    "src/main/java/.../YourMod.java": "..."
+    "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}",
+    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\nrepositories {\\n  mavenCentral()\\n}\\nversion = '1.0.0'\\n...",
+    "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\nminecraft_version=${mcVersion}\\n...",
+    "src/main/resources/fabric.mod.json": "{ ... complete json ... }",
+    "src/main/java/com/yourname/yourmodid/YourMod.java": "package com.yourname.yourmodid;\\npublic class YourMod { ... }"
   }
 }`;
 }
