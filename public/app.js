@@ -1,12 +1,23 @@
 /**
- * CodexMC — Frontend App
- * Features: thinking levels, JAR download, source ZIP download,
- * WebSocket live console, version management, session history
+ * CodexMC — Frontend App (v2 UPGRADED)
+ * Features:
+ * - Thinking levels
+ * - JAR + ZIP downloads
+ * - WebSocket live console
+ * - Version management
+ * - Session history (persistent)
+ * - Chat branching (fork conversations)
+ * - Message regeneration
+ * - Delete / rename sessions
+ * - Search history
+ * - Resume generation
  */
 
 // ════════════════════════════════════════════════════════
 //  STATE
 // ════════════════════════════════════════════════════════
+
+const HISTORY_KEY = 'codexmc_history_v2';
 
 const state = {
   sessionId: generateUUID(),
@@ -17,7 +28,16 @@ const state = {
   isGenerating: false,
   activeConsoleId: null,
   thinkingLevel: 'medium',
+
+  // CHAT SYSTEM
+  sessions: loadSessions(),
+  activeSessionId: null,
+  searchQuery: ''
 };
+
+// ════════════════════════════════════════════════════════
+//  UUID
+// ════════════════════════════════════════════════════════
 
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -25,22 +45,266 @@ function generateUUID() {
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 }
-const _KEY = 'codexmc__v1';
 
-state.history = loadHistory();
+// ════════════════════════════════════════════════════════
+//  SESSION STORAGE
+// ════════════════════════════════════════════════════════
 
-
-function loadHistory() {
+function loadSessions() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-  } catch {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw || raw === 'undefined' || raw === 'null') return [];
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('⚠️ Corrupted session history — resetting storage', err);
+    localStorage.removeItem(HISTORY_KEY);
     return [];
   }
 }
 
-function saveHistory() {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+function saveSessions() {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.sessions || []));
+  } catch (err) {
+    console.error('❌ Failed to save sessions:', err);
+  }
 }
+
+// ════════════════════════════════════════════════════════
+//  SESSION HELPERS
+// ════════════════════════════════════════════════════════
+
+function createSession(prompt, loader, mcVersion, consoleId) {
+  const session = {
+    id: consoleId,
+    title: prompt.slice(0, 40),
+    prompt,
+    loader,
+    mcVersion,
+    icon: { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮',
+    createdAt: Date.now(),
+    messages: [],
+    branches: [],
+    parentId: null
+  };
+
+  state.sessions.unshift(session);
+  if (state.sessions.length > 50) state.sessions = state.sessions.slice(0, 50);
+  state.activeSessionId = session.id;
+  saveSessions();
+  renderHistory();
+  return session;
+}
+
+function getSession(id) {
+  return state.sessions.find(s => s.id === id);
+}
+
+function updateSession(id, updater) {
+  const s = getSession(id);
+  if (!s) return;
+  updater(s);
+  saveSessions();
+}
+
+// ════════════════════════════════════════════════════════
+//  CHAT BRANCHING
+// ════════════════════════════════════════════════════════
+
+function forkSession(messageIndex) {
+  const parent = getSession(state.activeSessionId);
+  if (!parent) return;
+
+  const fork = {
+    ...structuredClone(parent),
+    id: generateUUID(),
+    title: parent.title + ' (fork)',
+    parentId: parent.id,
+    createdAt: Date.now()
+  };
+
+  fork.messages = parent.messages.slice(0, messageIndex + 1);
+
+  state.sessions.unshift(fork);
+  state.activeSessionId = fork.id;
+
+  saveSessions();
+  renderHistory();
+}
+
+// ════════════════════════════════════════════════════════
+//  MESSAGE REGISTRY
+// ════════════════════════════════════════════════════════
+
+function addMessage(role, content, meta = {}) {
+  const session = getSession(state.activeSessionId);
+  if (!session) return;
+
+  const msg = {
+    id: generateUUID(),
+    role,
+    content,
+    meta,
+    timestamp: Date.now()
+  };
+
+  session.messages.push(msg);
+  saveSessions();
+  renderMessages(session.id);
+}
+
+// ════════════════════════════════════════════════════════
+//  REGENERATION
+// ════════════════════════════════════════════════════════
+
+function regenerateMessage(messageId) {
+  const session = getSession(state.activeSessionId);
+  if (!session) return;
+
+  const index = session.messages.findIndex(m => m.id === messageId);
+  if (index === -1) return;
+
+  const original = session.messages[index];
+  session.messages = session.messages.slice(0, index);
+
+  saveSessions();
+  renderMessages(session.id);
+
+  if (original.role === 'user') {
+    resendPrompt(original.content);
+  }
+}
+
+function resendPrompt(prompt) {
+  document.getElementById('prompt-input').value = prompt;
+  sendPrompt();
+}
+
+// ════════════════════════════════════════════════════════
+//  DELETE / RENAME SESSIONS
+// ════════════════════════════════════════════════════════
+
+function deleteSession(id) {
+  state.sessions = state.sessions.filter(s => s.id !== id);
+  if (state.activeSessionId === id) {
+    state.activeSessionId = state.sessions[0]?.id || null;
+  }
+  saveSessions();
+  renderHistory();
+}
+
+function renameSession(id, newName) {
+  updateSession(id, s => s.title = newName);
+  renderHistory();
+}
+
+function renamePrompt(id) {
+  const session = getSession(id);
+  if (!session) return;
+  const newName = prompt('Rename session:', session.title);
+  if (newName && newName.trim()) renameSession(id, newName.trim());
+}
+
+// ════════════════════════════════════════════════════════
+//  HISTORY SEARCH
+// ════════════════════════════════════════════════════════
+
+function searchHistory(query) {
+  state.searchQuery = query.toLowerCase();
+  renderHistory();
+}
+
+// ════════════════════════════════════════════════════════
+//  HISTORY RENDER
+// ════════════════════════════════════════════════════════
+
+function renderHistory() {
+  const el = document.getElementById('chat-history');
+  if (!el) return;
+
+  el.innerHTML = '';
+
+  const sessions = state.sessions.filter(s =>
+    !state.searchQuery ||
+    s.title.toLowerCase().includes(state.searchQuery) ||
+    s.prompt.toLowerCase().includes(state.searchQuery)
+  );
+
+  if (!sessions.length) {
+    el.innerHTML = `<div class="history-empty">No sessions found</div>`;
+    return;
+  }
+
+  sessions.forEach(session => {
+    const div = document.createElement('div');
+    div.className = 'history-item' + (session.id === state.activeSessionId ? ' active' : '');
+
+    div.innerHTML = `
+      <div class="history-item-icon">${session.icon || '🎮'}</div>
+      <div>
+        <div class="history-item-title">${escapeHtml(session.title)}</div>
+        <div class="history-item-meta">${session.loader} · MC ${session.mcVersion}</div>
+        <div class="history-actions">
+          <button onclick="openSession('${session.id}')">Open</button>
+          <button onclick="renamePrompt('${session.id}')">Rename</button>
+          <button onclick="deleteSession('${session.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+
+    div.onclick = (e) => {
+      if (e.target.tagName === 'BUTTON') return;
+      openSession(session.id);
+    };
+
+    el.appendChild(div);
+  });
+}
+
+function openSession(id) {
+  state.activeSessionId = id;
+  const s = getSession(id);
+  if (!s) return;
+
+  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+  const target = document.querySelector(`.history-item[data-id="${id}"]`);
+  if (target) target.classList.add('active');
+
+  renderMessages(id);
+}
+
+// ════════════════════════════════════════════════════════
+//  MESSAGE RENDERING
+// ════════════════════════════════════════════════════════
+
+function renderMessages(sessionId) {
+  const session = getSession(sessionId);
+  if (!session) return;
+
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+
+  session.messages.forEach((m, i) => {
+    const div = document.createElement('div');
+    div.className = m.role === 'user' ? 'msg-user' : 'msg-ai';
+
+    div.innerHTML = `
+      <div class="msg-content">${escapeHtml(m.content)}</div>
+      <div class="msg-actions">
+        ${m.role === 'ai'
+          ? `<button onclick="regenerateMessage('${m.id}')">🔄 Regenerate</button>`
+          : ''
+        }
+        <button onclick="forkSession(${i})">🌿 Fork</button>
+      </div>
+    `;
+
+    msgs.appendChild(div);
+  });
+
+  scrollBottom();
+}
+
 // ════════════════════════════════════════════════════════
 //  BACKGROUND CANVAS
 // ════════════════════════════════════════════════════════
@@ -70,21 +334,18 @@ function initCanvas() {
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // Subtle grid
     ctx.strokeStyle = 'rgba(255,255,255,0.025)';
     ctx.lineWidth = 1;
     const g = 64;
     for (let x = 0; x < W; x += g) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += g) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
 
-    // Glow
     const grad = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.55);
     grad.addColorStop(0, 'rgba(74,222,128,0.05)');
     grad.addColorStop(1, 'rgba(74,222,128,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // Particles
     for (const p of particles) {
       p.x += p.vx; p.y += p.vy;
       if (p.x < 0) p.x = W;
@@ -97,7 +358,6 @@ function initCanvas() {
       ctx.fill();
     }
 
-    // Connections
     for (let i = 0; i < particles.length; i++) {
       for (let j = i + 1; j < particles.length; j++) {
         const dx = particles[i].x - particles[j].x;
@@ -181,22 +441,10 @@ function handleWsMessage(msg) {
 
   if (type === 'history') return;
   if (type === 'connected') return;
-  if (type === 'done') {
-    onGenerationDone(msg);
-    return;
-  }
-  if (type === 'error') {
-    onGenerationError(message);
-    return;
-  }
-  if (type === 'thinking_start') {
-    showThinkingIndicator(msg.level);
-    return;
-  }
-  if (type === 'thinking_end') {
-    hideThinkingIndicator();
-    return;
-  }
+  if (type === 'done') { onGenerationDone(msg); return; }
+  if (type === 'error') { onGenerationError(message); return; }
+  if (type === 'thinking_start') { showThinkingIndicator(msg.level); return; }
+  if (type === 'thinking_end') { hideThinkingIndicator(); return; }
 
   appendConsoleOutput(type, message);
 }
@@ -332,7 +580,7 @@ async function sendPrompt() {
 
   const { mcVersion, loaderVersion } = versionData;
 
-  // Hide welcome
+  // Hide welcome state
   const welcome = document.getElementById('welcome-state');
   if (welcome) welcome.style.display = 'none';
 
@@ -346,7 +594,13 @@ async function sendPrompt() {
 
   const consoleId = 'c-' + Date.now();
   addConsoleMessage(consoleId, loader, mcVersion, thinkingLevel);
-  addHistoryItem(prompt, loader, mcVersion, consoleId);
+
+  // Create or continue session
+  if (!state.activeSessionId) {
+    createSession(prompt, loader, mcVersion, consoleId);
+  } else {
+    addMessage('user', prompt, { loader, mcVersion, thinkingLevel });
+  }
 
   if (!state.ws || state.ws.readyState > 1) connectWS();
 
@@ -482,26 +736,16 @@ function onGenerationDone(result) {
   hideThinkingIndicator();
   updateConsoleStatus(state.activeConsoleId, 'done');
 
-  // Update status chip
   const statusEl = document.getElementById('ai-status-' + state.activeConsoleId);
   if (statusEl) statusEl.innerHTML = `<span style="color:var(--green);font-size:12px;font-family:var(--font-mono)">✅ Done</span>`;
 
-  // Build download area
   const dlArea = document.getElementById('download-area-' + state.activeConsoleId);
   if (!dlArea) { setGenerating(false); return; }
 
-  // Determine download URLs
-  let jarUrl = null;
-  let sourceUrl = null;
+  let jarUrl = downloads?.jar || null;
+  let sourceUrl = downloads?.source || null;
 
-  if (downloads) {
-    jarUrl = downloads.jar || null;
-    sourceUrl = downloads.source || null;
-  } else if (zipName) {
-    // legacy fallback
-    sourceUrl = `/api/download/${encodeURIComponent(zipName)}`;
-  }
-
+  if (zipName && !sourceUrl) sourceUrl = `/api/download/${encodeURIComponent(zipName)}`;
   if (workId) {
     jarUrl = jarUrl || `/download/jar/${workId}`;
     sourceUrl = sourceUrl || `/download/source/${workId}`;
@@ -542,6 +786,9 @@ function onGenerationDone(result) {
       </div>
     </div>`;
 
+  // Persist AI reply in session
+  addMessage('ai', modName ? `${modName} generated successfully` : 'Generation complete', result);
+
   setGenerating(false);
   scrollBottom();
 
@@ -558,6 +805,7 @@ function onGenerationError(message) {
   const statusEl = document.getElementById('ai-status-' + state.activeConsoleId);
   if (statusEl) statusEl.innerHTML = `<span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">❌ Failed</span>`;
 
+  addMessage('ai', `Error: ${message}`);
   setGenerating(false);
 }
 
@@ -569,111 +817,6 @@ function setGenerating(val) {
   if (inp) inp.disabled = val;
 }
 
-// ════════════════════════════════════════════════════════
-//  HISTORY (FIXED + SAFE PERSISTENCE)
-// ════════════════════════════════════════════════════════
-
-const HISTORY_KEY = 'codexmc_history_v1';
-
-state.history = loadHistorySafe();
-
-/**
- * SAFE LOAD (prevents JSON crash from breaking app)
- */
-function loadHistorySafe() {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-
-    if (!raw || raw === "undefined" || raw === "null") {
-      return [];
-    }
-
-    return JSON.parse(raw);
-  } catch (err) {
-    console.warn("⚠️ Corrupted history detected — resetting storage", err);
-    localStorage.removeItem(HISTORY_KEY);
-    return [];
-  }
-}
-
-/**
- * SAFE SAVE (never breaks app even if storage is full/blocked)
- */
-function saveHistory() {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history || []));
-  } catch (err) {
-    console.error("❌ Failed to save history:", err);
-  }
-}
-
-/**
- * RENDER HISTORY UI
- */
-function renderHistory() {
-  const historyEl = document.getElementById('chat-history');
-  if (!historyEl) return;
-
-  historyEl.innerHTML = '';
-
-  if (!state.history || state.history.length === 0) {
-    historyEl.innerHTML = `<div class="history-empty">No history yet</div>`;
-    return;
-  }
-
-  state.history.forEach(item => {
-    const div = document.createElement('div');
-    div.className = 'history-item';
-
-    div.innerHTML = `
-      <div class="history-item-icon">${item.icon || '🎮'}</div>
-      <div>
-        <div class="history-item-title">
-          ${escapeHtml(item.prompt?.slice(0, 38) || '')}
-          ${item.prompt?.length > 38 ? '…' : ''}
-        </div>
-        <div class="history-item-meta">${item.loader} · MC ${item.mcVersion}</div>
-      </div>
-    `;
-
-    div.onclick = () => {
-      document.querySelectorAll('.history-item')
-        .forEach(el => el.classList.remove('active'));
-
-      div.classList.add('active');
-
-      const target = document.getElementById('msg-' + item.id);
-      if (target) target.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    historyEl.appendChild(div);
-  });
-}
-
-/**
- * ADD HISTORY ITEM (FIXED)
- */
-function addHistoryItem(prompt, loader, mcVersion, consoleId) {
-  const icon = { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮';
-
-  const item = {
-    id: consoleId,
-    prompt,
-    loader,
-    mcVersion,
-    icon,
-    timestamp: Date.now()
-  };
-
-  state.history.unshift(item);
-
-  if (state.history.length > 50) {
-    state.history = state.history.slice(0, 50);
-  }
-
-  saveHistory();
-  renderHistory();
-}
 // ════════════════════════════════════════════════════════
 //  UTILITIES
 // ════════════════════════════════════════════════════════
@@ -752,5 +895,5 @@ document.addEventListener('DOMContentLoaded', () => {
   const loaderSelect = document.getElementById('loader-select');
   if (loaderSelect) loaderSelect.addEventListener('change', onLoaderChange);
 
-  renderHistory(); // ❗ THIS is required on refresh
+  renderHistory();
 });
