@@ -128,7 +128,7 @@ async function generateMod(request, onProgress) {
     let fullResponse = '';
 
     const response = await axios.post(MISTRAL_API, {
-      model: "devstral",
+      model: "codestral-latest",
       temperature: 0.7,
       max_tokens: 8000,
       stream: true,
