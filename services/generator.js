@@ -157,11 +157,11 @@ async function callAI(messages, retries = 3) {
       },
       {
         headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "http://localhost", // 🔴 MUST be set
-          "X-Title": "CodexMC"
-        },
+  "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+  "Content-Type": "application/json",
+  "HTTP-Referer": "https://codexmc.net", // or your domain
+  "X-OpenRouter-Title": "CodexMC"
+},
         timeout: 120000
       }
     );
