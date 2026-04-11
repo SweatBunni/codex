@@ -483,6 +483,7 @@ function buildSystemPrompt(request, thinkingLevel) {
   const cfg = THINKING_CONFIGS[thinkingLevel] || THINKING_CONFIGS.medium;
   const loader = request.loader || 'fabric';
   const mcVersion = request.mcVersion || '1.21.1';
+  const javaMajor = requiredJavaMajor(mcVersion);
   const loomVer = loader === 'fabric' ? getFabricLoomVersion(mcVersion) : '';
   const fabricApiVer = loader === 'fabric' ? getFabricApiVersion(mcVersion) : '';
   const loaderVer = request.loaderVersion || '';
@@ -509,6 +510,12 @@ build.gradle MUST start with:
 plugins {
   id 'fabric-loom' version '${loomVer}'
   id 'maven-publish'
+}
+
+java {
+  toolchain {
+    languageVersion = JavaLanguageVersion.of(${javaMajor})
+  }
 }
 
 repositories {
@@ -614,7 +621,7 @@ Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
   "mcVersion": "${mcVersion}",
   "files": {
     "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}\\n\\nrootProject.name = 'example-mod'",
-    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n  modImplementation 'net.fabricmc.fabric-api:fabric-api:${fabricApiVer}'\\n}",
+    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\njava {\\n  toolchain {\\n    languageVersion = JavaLanguageVersion.of(${javaMajor})\\n  }\\n}\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n  modImplementation 'net.fabricmc.fabric-api:fabric-api:${fabricApiVer}'\\n}",
     "gradle.properties": "org.gradle.jvmargs=-Xmx1G",
     "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\":1,\\"id\\":\\"example-mod\\",\\"version\\":\\"1.0.0\\",\\"name\\":\\"ExampleMod\\",\\"description\\":\\"A mod\\",\\"environment\\":\\"*\\",\\"entrypoints\\":{\\"main\\":[\\"com.example.examplemod.ExampleMod\\"]},\\"mixins\\":[],\\"depends\\":{\\"fabricloader\\":\\">=0.14.0\\",\\"minecraft\\":\\"${mcVersion}\\",\\"java\\":\\">=17\\"}}",
     "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;\\n\\nimport net.fabricmc.api.ModInitializer;\\nimport org.slf4j.Logger;\\nimport org.slf4j.LoggerFactory;\\n\\npublic class ExampleMod implements ModInitializer {\\n  public static final String MOD_ID = \\\"example-mod\\\";\\n  public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);\\n\\n  @Override\\n  public void onInitialize() {\\n    LOGGER.info(\\\"Hello from ExampleMod!\\\");\\n  }\\n}"
