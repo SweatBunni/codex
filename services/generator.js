@@ -456,19 +456,19 @@ function validate(mod) {
 
 const THINKING_CONFIGS = {
   low: {
-    model: 'openai/gpt-oss-120b:free',
+    model: 'mistralai/mistral-7b-instruct:free',
     max_tokens: 4000,
     temperature: 0.3,
     extraSystemNote: 'Be concise. Generate only required files.',
   },
   medium: {
-    model: 'openai/gpt-oss-120b:free',
+    model: 'mistralai/mistral-7b-instruct:free',
     max_tokens: 8000,
     temperature: 0.25,
     extraSystemNote: 'Include proper mod structure and registration.',
   },
   high: {
-    model: 'openai/gpt-oss-120b:free',
+    model: 'mistralai/mistral-7b-instruct:free',
     max_tokens: 16000,
     temperature: 0.2,
     extraSystemNote: 'Deep production-grade Minecraft mod with full correctness.',
@@ -549,7 +549,15 @@ fabric.mod.json EXACT FORMAT:
     "minecraft": "${mcVersion}",
     "java": ">=17"
   }
-}`;
+}
+
+CRITICAL JAVA CODE GUIDELINES FOR ${mcVersion}:
+- DO NOT use net.minecraft.command.* packages - they don't exist
+- DO NOT use net.minecraft.server.command.* packages - they don't exist  
+- DO NOT use net.minecraft.text.Text - use net.minecraft.text.Text from fabric-api
+- Keep Java code MINIMAL - only implement ModInitializer.onInitialize()
+- For commands or advanced features, ask the user to provide specifications
+- Default mod should just log a message when initializing`;
   } else if (loader === 'forge') {
     loaderInstructions = `
 FORGE REQUIREMENTS:
@@ -590,6 +598,14 @@ IMPORTANT:
 - File content must be valid Gradle/Java/JSON syntax
 - DO NOT include optional comments in file contents
 
+JAVA CODE SAFETY:
+- For simple mods, ONLY use: ModInitializer, org.slf4j.Logger
+- DO NOT import net.minecraft.command.* - these don't exist in ${mcVersion}
+- DO NOT import net.minecraft.server.command.* - these don't exist
+- DO NOT import net.minecraft.text.Text or net.minecraft.text.* directly
+- If user asks for commands/blocks/items, ask what specific feature first
+- Keep example code MINIMAL - it should compile without errors
+
 Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
 {
   "modName": "ExampleMod",
@@ -601,7 +617,7 @@ Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
     "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n  modImplementation 'net.fabricmc.fabric-api:fabric-api:${fabricApiVer}'\\n}",
     "gradle.properties": "org.gradle.jvmargs=-Xmx1G",
     "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\":1,\\"id\\":\\"example-mod\\",\\"version\\":\\"1.0.0\\",\\"name\\":\\"ExampleMod\\",\\"description\\":\\"A mod\\",\\"environment\\":\\"*\\",\\"entrypoints\\":{\\"main\\":[\\"com.example.examplemod.ExampleMod\\"]},\\"mixins\\":[],\\"depends\\":{\\"fabricloader\\":\\">=0.14.0\\",\\"minecraft\\":\\"${mcVersion}\\",\\"java\\":\\">=17\\"}}",
-    "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;\\n\\nimport net.fabricmc.api.ModInitializer;\\n\\npublic class ExampleMod implements ModInitializer {\\n  @Override\\n  public void onInitialize() {\\n  }\\n}"
+    "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;\\n\\nimport net.fabricmc.api.ModInitializer;\\nimport org.slf4j.Logger;\\nimport org.slf4j.LoggerFactory;\\n\\npublic class ExampleMod implements ModInitializer {\\n  public static final String MOD_ID = \\\"example-mod\\\";\\n  public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);\\n\\n  @Override\\n  public void onInitialize() {\\n    LOGGER.info(\\\"Hello from ExampleMod!\\\");\\n  }\\n}"
   }
 }`;
 }
@@ -837,13 +853,23 @@ async function generateMod(request, onProgress) {
     }
   }));
 
+  const aiFirstResponse = initialResponse.data.choices[0].message.content;
+  
   conversationHistory.push({
-    round: 1,
-    userPrompt,
-    aiResponse: initialResponse.data.choices[0].message.content
+    timestamp: new Date().toISOString(),
+    sender: 'User',
+    message: userPrompt,
+    type: 'initial_request'
+  });
+  
+  conversationHistory.push({
+    timestamp: new Date().toISOString(),
+    sender: 'AI',
+    message: aiFirstResponse,
+    type: 'initial_response'
   });
 
-  let modData = extractJSON(initialResponse.data.choices[0].message.content);
+  let modData = extractJSON(aiFirstResponse);
   validate(modData);
   modData.files = autoFixJava(modData.files);
 
@@ -881,31 +907,38 @@ async function generateMod(request, onProgress) {
         emit('info', 'Sending compilation errors to AI for fixing...');
         
         const errorSummary = compileErrors
-          .slice(0, 5) // First 5 errors
-          .map(e => `${e.file}: ${e.message}`)
+          .slice(0, 10) // First 10 errors
+          .map(e => `Line ${e.line}: ${e.message}`)
           .join('\n');
 
-        const fixPrompt = `The Minecraft mod build failed with these compilation errors:
-
+        const fixPrompt = `COMPILATION ERRORS TO FIX:
 ${errorSummary}
 
-These are likely due to:
-1. Wrong import statement names for Minecraft classes
-2. Missing or incompatible Fabric API methods
-3. Incorrect package structure
+CRITICAL FIX INSTRUCTIONS:
+1. These errors mean the imported packages do NOT exist in Minecraft ${request.mcVersion}
+2. DO NOT try to use net.minecraft.command.*, net.minecraft.server.command.*, or other missing packages
+3. ONLY use these guaranteed-to-exist packages:
+   - net.fabricmc.api.ModInitializer (for main entry point)
+   - org.slf4j.Logger, org.slf4j.LoggerFactory (for logging)
+   - net.fabricmc.fabric.api.* (for Fabric API features that EXIST)
+4. For MOST mods, just implement ModInitializer and log in onInitialize()
+5. If the mod request requires specific features (like commands, blocks, items), keep it SIMPLE
 
-Please regenerate ONLY the Java source files to fix these errors. Keep the Gradle config unchanged.
-Make sure to use imports and APIs that exist in Minecraft ${request.mcVersion} with Fabric Loom ${getFabricLoomVersion(request.mcVersion)}.
+Please regenerate ONLY the Java source files (.java files) to fix these errors.
+Use simple, safe code that definitely compiles.
+Keep Gradle config unchanged.
 
-Return the corrected files in the same JSON format, with the complete "files" object.`;
+Return ONLY the corrected "files" object with the complete "files" JSON structure.`;
 
         try {
+          emit('info', `Sending fix request to AI with errors:\n${errorSummary}`);
+          
           const fixResponse = await axios.post(OPENROUTER_API, {
             model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt },
-              { role: 'assistant', content: initialResponse.data.choices[0].message.content },
+              { role: 'assistant', content: aiFirstResponse },
               { role: 'user', content: fixPrompt }
             ]
           }, {
@@ -915,14 +948,24 @@ Return the corrected files in the same JSON format, with the complete "files" ob
             }
           });
 
+          const aiFixResponse = fixResponse.data.choices[0].message.content;
+          
           conversationHistory.push({
-            round: buildAttempts + 1,
-            errorContext: errorSummary,
-            userPrompt: fixPrompt,
-            aiResponse: fixResponse.data.choices[0].message.content
+            timestamp: new Date().toISOString(),
+            sender: 'User',
+            message: fixPrompt,
+            type: 'error_fix_request',
+            errors: errorSummary
+          });
+          
+          conversationHistory.push({
+            timestamp: new Date().toISOString(),
+            sender: 'AI',
+            message: aiFixResponse,
+            type: 'error_fix_response'
           });
 
-          const fixedData = extractJSON(fixResponse.data.choices[0].message.content);
+          const fixedData = extractJSON(aiFixResponse);
           
           // Merge fixed files with existing ones
           modData.files = { ...modData.files, ...fixedData.files };
@@ -936,6 +979,8 @@ Return the corrected files in the same JSON format, with the complete "files" ob
               await fs.writeFile(fullPath, modData.files[filePath]);
             }
           }
+          
+          emit('info', `Applied AI fixes, retrying build...`);
         } catch (fixErr) {
           emit('warn', `Error getting AI fix: ${fixErr.message}`);
         }
@@ -954,7 +999,15 @@ Return the corrected files in the same JSON format, with the complete "files" ob
 
   // Save conversation history to workspace for reference
   const historyFile = path.join(workDir, 'ai-conversation-history.json');
-  await fs.writeFile(historyFile, JSON.stringify(conversationHistory, null, 2));
+  await fs.writeFile(historyFile, JSON.stringify({
+    workId,
+    modName: modData.modName,
+    modId: modData.modId,
+    loader: request.loader,
+    mcVersion: request.mcVersion,
+    createdAt: new Date().toISOString(),
+    conversations: conversationHistory
+  }, null, 2));
 
   return { success: true, workId };
 }
