@@ -170,14 +170,19 @@ function resolveJavaHome(majorVersion) {
  * Older     -> Java 17  (Gradle 8.1)
  */
 function requiredJavaMajor(mcVersion) {
-  if (!mcVersion) return 17;
-  const [, minor] = mcVersion.split('.').map(Number);
-  return minor >= 21 ? 21 : 17;
+  if (!mcVersion) return 21;
+  const [major, minor] = mcVersion.split('.').map(Number);
+  // MC 26+ requires Java 21+, MC 21-25 requires Java 21, older requires Java 17
+  if (major >= 26) return 21;
+  if (minor >= 21) return 21;
+  return 17;
 }
 
 function resolveGradleVersion(mcVersion) {
-  if (!mcVersion) return '8.1.1';
-  const [, minor] = mcVersion.split('.').map(Number);
+  if (!mcVersion) return '8.8';
+  const [major, minor] = mcVersion.split('.').map(Number);
+  // MC 26+ uses Gradle 8.8+, MC 21+ uses 8.8
+  if (major >= 26) return '8.8';
   if (minor >= 21) return '8.8';
   if (minor >= 20) return '8.5';
   if (minor >= 19) return '8.3';
@@ -185,7 +190,12 @@ function resolveGradleVersion(mcVersion) {
 }
 
 function getFabricLoomVersion(mcVersion) {
-  const [, majorMinor] = mcVersion.split('.');
+  if (!mcVersion) return '1.8-SNAPSHOT';
+  const [major, minor] = mcVersion.split('.').map(Number);
+  // MC 26+ uses new Fabric Loom versioning (26.0+)
+  if (major >= 26) return '26.0-SNAPSHOT';
+  // MC 21-25 uses old versioning
+  const majorMinor = `${major}.${minor || 0}`;
   const versionMap = {
     '1.21': '1.8-SNAPSHOT',
     '1.20': '1.7-SNAPSHOT',
@@ -193,15 +203,15 @@ function getFabricLoomVersion(mcVersion) {
     '1.18': '1.4-SNAPSHOT',
     '1.17': '1.2-SNAPSHOT',
     '1.16': '0.12-SNAPSHOT',
-    default: '1.7-SNAPSHOT'
   };
-  return versionMap[majorMinor] || versionMap.default;
+  return versionMap[majorMinor] || '1.8-SNAPSHOT';
 }
 
 function getFabricApiVersion(mcVersion) {
   if (!mcVersion) return '0.100.0+1.21';
-  const [, minor] = mcVersion.split('.').map(Number);
+  const [major, minor] = mcVersion.split('.').map(Number);
   // Map Minecraft versions to stable Fabric API versions
+  if (major >= 26) return `1.0.0+${major}.${minor || 0}`; // MC 26+ uses new version format
   if (minor >= 21) return '0.100.0+1.21';
   if (minor >= 20) return '0.91.0+1.20.1';
   if (minor >= 19) return '0.75.0+1.19.2';
@@ -482,7 +492,7 @@ const THINKING_CONFIGS = {
 function buildSystemPrompt(request, thinkingLevel) {
   const cfg = THINKING_CONFIGS[thinkingLevel] || THINKING_CONFIGS.medium;
   const loader = request.loader || 'fabric';
-  const mcVersion = request.mcVersion || '1.21.1';
+  const mcVersion = request.mcVersion || '26.12';
   const javaMajor = requiredJavaMajor(mcVersion);
   const loomVer = loader === 'fabric' ? getFabricLoomVersion(mcVersion) : '';
   const fabricApiVer = loader === 'fabric' ? getFabricApiVersion(mcVersion) : '';
