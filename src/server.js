@@ -140,8 +140,14 @@ app.ws('/ws/generate', (ws, req) => {
 });
 
 // ─── Start ───────────────────────────────────────────────────────
-const PORT = config.server.port;
 app.listen(PORT, () => {
   logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
-  logger.info(`AI Model: Google ${config.gemini.model}`);
+
+  const model =
+    config?.gemini?.model ||
+    config?.ai?.model ||
+    process.env.MODEL ||
+    "unknown";
+
+  logger.info(`AI Model: ${model}`);
 });
