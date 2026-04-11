@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --neon: #00ff88;
+  --neon-dim: rgba(0, 255, 136, 0.15);
+  --neon-mid: #00c264;
+  --amber: #ffb700;
+  --amber-dim: rgba(255, 183, 0, 0.15);
+  --bg: #0c0c0d;
+  --surface: #16161a;
+  --surface-2: #1c1c21;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-bright: rgba(0, 255, 136, 0.25);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #2a2a33; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--neon-mid); }
+
+/* Selection */
+::selection { background: rgba(0, 255, 136, 0.2); color: #fff; }
+
+/* Scanline overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.04) 2px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Grid background */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Glow utilities */
+.glow-green { box-shadow: 0 0 20px rgba(0,255,136,0.3), 0 0 40px rgba(0,255,136,0.1); }
+.glow-green-sm { box-shadow: 0 0 10px rgba(0,255,136,0.25); }
+.glow-amber { box-shadow: 0 0 20px rgba(255,183,0,0.3), 0 0 40px rgba(255,183,0,0.1); }
+.text-glow-green { text-shadow: 0 0 20px rgba(0,255,136,0.6); }
+.text-glow-amber { text-shadow: 0 0 20px rgba(255,183,0,0.6); }
+
+/* Terminal cursor */
+.cursor::after {
+  content: "█";
+  animation: blink 1s step-end infinite;
+  color: var(--neon);
+}
+
+/* Neon border */
+.border-neon { border-color: rgba(0,255,136,0.3); }
+.border-neon:focus { border-color: rgba(0,255,136,0.7); box-shadow: 0 0 15px rgba(0,255,136,0.2); }
+
+/* Shimmer loading */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0,255,136,0.08) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* Code block */
+.code-block {
+  font-family: 'JetBrains Mono', monospace;
+  background: #0a0a0c;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+}
+
+/* Minecraft block pixel shadow */
+.pixel-shadow {
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.5);
+}
+
+/* Status dot */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--neon);
+  box-shadow: 0 0 8px var(--neon);
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(0,255,136,0.5); }
+  50% { box-shadow: 0 0 16px rgba(0,255,136,0.9); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-slide-up { animation: slideUp 0.4s ease-out forwards; }
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+/* Stagger children */
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
