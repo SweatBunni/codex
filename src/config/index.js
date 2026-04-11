@@ -8,9 +8,12 @@ module.exports = {
   },
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
-    model: process.env.OPENROUTER_MODEL || 'qwen/qwen3-coder:free',
+    primaryModel: process.env.OPENROUTER_MODEL || 'qwen/qwen3.6-plus-preview:free',
+    fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL || 'qwen/qwen3-coder:free',
+    model: process.env.OPENROUTER_MODEL || 'qwen/qwen3.6-plus-preview:free',
     maxTokens: 32768,
     temperature: 0.4,
+    reasoningEffort: process.env.OPENROUTER_REASONING_EFFORT || 'medium',
   },
   workspace: {
     dir: process.env.WORKSPACE_DIR || './data/workspaces',

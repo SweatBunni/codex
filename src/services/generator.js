@@ -3,7 +3,6 @@
  * Uses OpenRouter (openrouter.ai)
  */
 
-const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -11,6 +10,7 @@ const archiver = require('archiver');
 const { execSync, spawn } = require('child_process');
 const config = require('../config');
 const { logger } = require('../utils/logger');
+const { buildResponsePlan, generateProjectFromPlan } = require('./responsePipeline');
 
 const WORKSPACE_DIR = path.resolve(config.workspace.dir);
 
@@ -156,56 +156,6 @@ function getJavaVersionString(mcVersion) {
   return 'JavaVersion.VERSION_1_8';
 }
 
-// OpenRouter Client
-async function callOpenRouter(prompt) {
-  const { apiKey, model, maxTokens, temperature } = config.openrouter;
-  try {
-    const res = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens,
-      temperature,
-    }, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': config.server.siteUrl,
-        'X-Title': 'CodexMC',
-      },
-      timeout: 240000,
-    });
-
-    const choice = res.data?.choices?.[0];
-    if (!choice) throw new Error('OpenRouter returned no choices');
-    return choice.message?.content || '';
-  } catch (error) {
-    const status = error?.response?.status;
-    const providerMessage =
-      error?.response?.data?.error?.message ||
-      error?.response?.data?.message ||
-      error?.response?.data?.error?.metadata?.raw ||
-      error?.message;
-
-    if (status === 402) {
-      throw new Error(`OpenRouter billing/credits error (402): ${providerMessage || 'the selected model is not currently available for this API key'}`);
-    }
-
-    if (status === 401) {
-      throw new Error(`OpenRouter authentication error (401): ${providerMessage || 'check OPENROUTER_API_KEY'}`);
-    }
-
-    if (status === 429) {
-      throw new Error(`OpenRouter rate limit error (429): ${providerMessage || 'too many requests, please try again shortly'}`);
-    }
-
-    if (status) {
-      throw new Error(`OpenRouter request failed (${status}): ${providerMessage || 'unknown provider error'}`);
-    }
-
-    throw error;
-  }
-}
-
 function buildDependencies(loader, mcVersion, loaderVersion) {
   if (loader === 'fabric') {
     return `FABRIC DEPENDENCIES:
@@ -227,7 +177,7 @@ function buildDependencies(loader, mcVersion, loaderVersion) {
 - Use @Mod annotation, Forge event bus, DeferredRegister`;
 }
 
-function buildPrompt(req) {
+function buildPrompt(req, analysis, architecture) {
   const { description, loader, mcVersion, loaderVersion, thinkingLevel } = req;
   const loaderUpper = loader.toUpperCase();
   const depBlock = buildDependencies(loader, mcVersion, loaderVersion);
@@ -245,6 +195,13 @@ REQUIREMENTS:
 - Quality level: ${thinkingLevel}
 - Java version: ${javaMajor} (use ${javaVersionEnum} in build.gradle)
 - Gradle version: ${gradleVersion}
+- Tokenization summary: ~${analysis.tokenization.approximateTokenCount} prompt tokens
+- Vector intent: ${analysis.vectorization.inferredIntent}
+- Semantic anchors: ${analysis.vectorization.topTerms.map(entry => entry.term).join(', ') || 'none'}
+- Planned architecture summary: ${architecture.summary || 'build a clean, compilable mod structure'}
+- Planned components: ${(architecture.architecture || []).join(', ') || 'main mod class, registries, feature classes'}
+- Planned required files: ${(architecture.requiredFiles || []).join(', ') || 'derive as needed'}
+- Risks to avoid: ${(architecture.risks || []).join(', ') || 'invalid JSON, missing files, API mismatch'}
 
 CRITICAL RULES:
 1. Output ONLY a valid JSON object - no markdown, no code fences, no commentary before or after
@@ -292,17 +249,6 @@ OUTPUT FORMAT - output ONLY this JSON, nothing before or after:
     "src/main/resources/pack.mcmeta": "..."
   }
 }`;
-}
-function extractJSON(text) {
-  try { return JSON.parse(text.trim()); } catch {}
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1) {
-    try { return JSON.parse(text.slice(start, end + 1)); } catch {}
-  }
-  const stripped = text.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
-  try { return JSON.parse(stripped); } catch {}
-  throw new Error('Could not extract valid JSON from AI response');
 }
 
 async function writeGradleWrapper(workDir, mcVersion, loader) {
@@ -570,32 +516,33 @@ async function generateMod(request, onProgress) {
   try {
     await fs.ensureDir(workDir);
     emit('status', `Starting mod generation (Job: ${jobId})`);
-    emit('status', `Using OpenRouter (${config.openrouter.model})`);
-
-    const thinkingMap = { low: 2048, medium: 8192, high: 24576 };
-    const thinkingBudget = thinkingMap[request.thinkingLevel] || 8192;
-
-    emit('ai', `Model thinking... (quality: ${request.thinkingLevel || 'medium'})`);
+    emit('status', `Using OpenRouter (${config.openrouter.primaryModel} -> ${config.openrouter.fallbackModel})`);
+    emit('pipeline', 'Stage 1/4: tokenization and semantic mapping');
     emit('ai', `Prompt: "${request.description}"`);
 
-    const prompt = buildPrompt(request);
-    const rawResponse = await callOpenRouter(prompt);
+    const promptFactory = (req, analysis, architecture) => buildPrompt(req, analysis, architecture);
+    const helpers = {
+      javaMajor: requiredJavaMajor(request.mcVersion),
+      javaVersionEnum: getJavaVersionString(request.mcVersion),
+      gradleVersion: getGradleVersion(request.mcVersion, request.loader),
+      maxTokens: config.openrouter.maxTokens,
+      temperature: config.openrouter.temperature,
+      preferredModel: config.openrouter.primaryModel,
+      fallbackModel: config.openrouter.fallbackModel,
+      promptFactory,
+    };
 
-    emit('ai', 'Response received, parsing...');
+    const plan = await buildResponsePlan(request, helpers, emit);
+    emit('pipeline', 'Stage 2/4: architecture prediction complete');
+    emit('pipeline', 'Stage 3/4: iterative code generation');
 
-    let mod;
-    try {
-      mod = extractJSON(rawResponse);
-    } catch (e) {
-      emit('ai', 'Retrying with stricter JSON prompt...');
-      try {
-        const retry = await callOpenRouter(
-          `${prompt}\n\nIMPORTANT: Output ONLY the raw JSON object. Start with { and end with }. No other text whatsoever.`
-        );
-        mod = extractJSON(retry);
-      } catch (retryError) {
-        throw retryError;
-      }
+    const generation = await generateProjectFromPlan(request, plan, helpers, emit, validateMod);
+    let mod = generation.mod;
+    emit('ai', `Model selected: ${generation.modelUsed}`);
+    if (generation.repaired) {
+      emit('pipeline', 'Stage 4/4: repair pass completed');
+    } else {
+      emit('pipeline', 'Stage 4/4: validation completed without repair');
     }
 
     mod = normalizeGeneratedMod(mod, request);
@@ -642,6 +589,13 @@ async function generateMod(request, onProgress) {
       description: mod.description || request.description,
       loader: request.loader,
       mcVersion: request.mcVersion,
+      pipeline: {
+        tokenCount: plan.analysis.tokenization.approximateTokenCount,
+        intent: plan.analysis.vectorization.inferredIntent,
+        modelUsed: generation.modelUsed,
+        architectureModel: plan.architectureModel,
+        repaired: generation.repaired,
+      },
       files: Object.keys(mod.files),
       sourceZipPath, jarPath, buildSuccess, buildError, workDir,
     };

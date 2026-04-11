@@ -42,7 +42,13 @@ const apiLimiter = rateLimit({
 
 // Health
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', model: config.openrouter.model, uptime: Math.floor(process.uptime()) });
+  res.json({
+    status: 'ok',
+    model: config.openrouter.primaryModel,
+    fallbackModel: config.openrouter.fallbackModel,
+    reasoningEffort: config.openrouter.reasoningEffort,
+    uptime: Math.floor(process.uptime()),
+  });
 });
 
 // Versions
@@ -160,6 +166,7 @@ app.ws('/ws/generate', (ws, req) => {
           version: result.version,
           description: result.description,
           buildSuccess: result.buildSuccess,
+          pipeline: result.pipeline,
           files: result.files,
           jarUrl: result.buildSuccess ? `/api/download/jar/${result.jobId}` : null,
           sourceUrl: `/api/download/source/${result.jobId}`,
@@ -173,6 +180,7 @@ app.ws('/ws/generate', (ws, req) => {
         modName: result.modName,
         version: result.version,
         buildSuccess: result.buildSuccess,
+        pipeline: result.pipeline,
         files: result.files,
         jarUrl: result.buildSuccess ? `/api/download/jar/${result.jobId}` : null,
         sourceUrl: `/api/download/source/${result.jobId}`,
@@ -205,6 +213,7 @@ app.listen(PORT, () => {
   logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
 
   const model =
+    config?.openrouter?.primaryModel ||
     config?.openrouter?.model ||
     process.env.OPENROUTER_MODEL ||
     "unknown";
