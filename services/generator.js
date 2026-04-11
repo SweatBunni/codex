@@ -271,6 +271,14 @@ async function fixGradle(workDir) {
     g = g.replace(/officialMojangMappings/g, 'loom.officialMojangMappings()');
   }
 
+  // Fix: Remove invalid Fabric API versions that don't exist
+  // Fabric API versions are release-specific and old versions like 0.18.6 don't exist
+  // Only include Fabric API if explicitly needed with a valid version
+  g = g.replace(/modImplementation\s+['"]net\.fabricmc\.fabric-api:fabric-api:[^'"]*['"]/g, '');
+  
+  // Clean up any doubled spaces/newlines from removal
+  g = g.replace(/\n\s*\n\s*\n/g, '\n\n');
+
   await fs.writeFile(file, g);
 }
 
@@ -449,7 +457,7 @@ dependencies {
 
 CRITICAL: Use loom.officialMojangMappings() instead of yarn mappings. Yarn mappings can cause "Unsupported unpick version" errors.
 
-For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
+DO NOT include Fabric API in dependencies unless explicitly requested. Fabric API versions are release-specific and must match the exact MC version. Including incorrect versions will cause build failures.
 
 fabric.mod.json EXACT FORMAT: 
 {
