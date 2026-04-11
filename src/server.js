@@ -1,7 +1,10 @@
 /**
- * CodexMC Server
- * Express + WebSocket — real-time mod generation
- * Model: deepseek/deepseek-r1:free via OpenRouter
+ * CodexMC Server v2.0
+ * Modern modular backend with ChatGPT-like features
+ * - Real-time conversations with streaming
+ * - User authentication and sessions
+ * - Advanced rate limiting and security
+ * - Comprehensive logging and monitoring
  */
 
 require('dotenv').config();
@@ -11,206 +14,244 @@ const expressWs = require('express-ws');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs-extra');
-const crypto = require('crypto');
 
-const { getForgeVersions, getFabricVersions, getNeoForgeVersions } = require('../services/versions');
-const { generateMod } = require('../services/generator');
+// Import configuration and utilities
+const config = require('./config');
+const db = require('./utils/database');
+const { logger } = require('./utils/logger');
+
+// Import services
+const websocketService = require('./services/websocket');
+const { getForgeVersions, getFabricVersions, getNeoForgeVersions } = require('./services/versions');
+const { generateMod } = require('./services/generator');
+
+// Import routes
+const authRoutes = require('./routes/auth');
+const conversationRoutes = require('./routes/conversation');
+const apiRoutes = require('./routes/api');
+
+// Import middleware
+const rateLimiter = require('./middleware/rateLimiter');
 
 const app = express();
 expressWs(app);
 
-// ─────────────────────────────────────────────
-// PATHS
-// ─────────────────────────────────────────────
+// Ensure required directories exist
+fs.ensureDirSync(path.join(__dirname, '..', 'data'));
+fs.ensureDirSync(config.workspace.dir);
 
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
-const SESSIONS_DIR = path.join(__dirname, '..', 'data', 'sessions');
-fs.ensureDirSync(SESSIONS_DIR);
-fs.ensureDirSync(WORKSPACE_DIR);
+// Middleware setup
+app.use(cors({
+  origin: config.server.corsOrigin,
+  credentials: true
+}));
 
-// ─────────────────────────────────────────────
-// SESSION STORAGE
-// ─────────────────────────────────────────────
-
-async function loadChat(sessionId) {
-  const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
-  if (!(await fs.pathExists(file))) return [];
-  return await fs.readJson(file);
-}
-
-async function saveChat(sessionId, message) {
-  const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
-  let data = [];
-  if (await fs.pathExists(file)) data = await fs.readJson(file);
-  data.push({ ...message, timestamp: Date.now() });
-  await fs.writeJson(file, data, { spaces: 2 });
-}
-
-// ─────────────────────────────────────────────
-// MIDDLEWARE
-// ─────────────────────────────────────────────
-
-app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// ─────────────────────────────────────────────
-// WEBSOCKET
-// ─────────────────────────────────────────────
-
-const activeSessions = new Map();
-
-app.ws('/ws/:sessionId', async (ws, req) => {
-  const { sessionId } = req.params;
-  activeSessions.set(sessionId, ws);
-  console.log(`[WS] Connected: ${sessionId}`);
-
-  const history = await loadChat(sessionId);
-  ws.send(JSON.stringify({ type: 'history', messages: history }));
-  ws.send(JSON.stringify({ type: 'connected', message: '🟢 Connected to CodexMC' }));
-
-  ws.on('close', () => {
-    activeSessions.delete(sessionId);
-    console.log(`[WS] Disconnected: ${sessionId}`);
-  });
+// Request logging middleware
+app.use((req, res, next) => {
+  logger.request(req, `${req.method} ${req.url}`);
+  next();
 });
 
-function sendToSession(sessionId, data) {
-  saveChat(sessionId, data).catch(() => {});
-  const ws = activeSessions.get(sessionId);
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify(data));
-  }
-}
+// Apply rate limiting to all API routes
+app.use('/api', rateLimiter.middleware());
+app.use('/conversation', rateLimiter.middleware());
 
-// ─────────────────────────────────────────────
-// API: VERSION LISTS
-// ─────────────────────────────────────────────
-
-app.get('/api/versions/:loader', async (req, res) => {
-  try {
-    const { loader } = req.params;
-    let versions;
-    switch (loader.toLowerCase()) {
-      case 'forge':    versions = await getForgeVersions(); break;
-      case 'fabric':   versions = await getFabricVersions(); break;
-      case 'neoforge': versions = await getNeoForgeVersions(); break;
-      default: return res.status(400).json({ error: 'Unknown loader' });
-    }
-    res.json({ loader, versions });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ─────────────────────────────────────────────
-// API: GENERATE MOD
-// ─────────────────────────────────────────────
-
-app.post('/api/generate', async (req, res) => {
-  let { prompt, loader, mcVersion, loaderVersion, thinkingLevel, sessionId } = req.body;
-
-  console.log('[Generate]', { loader, mcVersion, thinkingLevel, prompt: prompt?.slice(0, 60) });
-
-  if (!sessionId) sessionId = crypto.randomUUID();
-  if (!loaderVersion) loaderVersion = 'latest';
-  if (!thinkingLevel || !['low', 'medium', 'high'].includes(thinkingLevel)) {
-    thinkingLevel = 'medium';
-  }
-
-  if (!prompt || !loader || !mcVersion) {
-    return res.status(400).json({ error: 'Missing required fields: prompt, loader, mcVersion' });
-  }
-
-  // Respond immediately — generation streams via WS
-  res.json({ status: 'generating', sessionId });
-
-  generateMod(
-    { prompt, loader, mcVersion, loaderVersion, thinkingLevel, sessionId },
-    (event) => sendToSession(sessionId, event)
-  )
-    .then(result => {
-      sendToSession(sessionId, { type: 'done', ...result });
-    })
-    .catch(err => {
-      sendToSession(sessionId, { type: 'error', message: err.message });
-    });
-});
-
-// ─────────────────────────────────────────────
-// DOWNLOADS
-// ─────────────────────────────────────────────
-
-// Source ZIP
-app.get('/download/source/:workId', async (req, res) => {
-  const { workId } = req.params;
-  if (!/^[\w-]+$/.test(workId)) return res.status(400).json({ error: 'Invalid workId' });
-
-  const zipPath = path.join(WORKSPACE_DIR, workId, 'source.zip');
-  if (!(await fs.pathExists(zipPath))) return res.status(404).json({ error: 'Source not found' });
-
-  res.download(zipPath, `codexmc-source-${workId.slice(0, 8)}.zip`);
-});
-
-// Compiled JAR
-app.get('/download/jar/:workId', async (req, res) => {
-  const { workId } = req.params;
-  if (!/^[\w-]+$/.test(workId)) return res.status(400).json({ error: 'Invalid workId' });
-
-  const libsDir = path.join(WORKSPACE_DIR, workId, 'build', 'libs');
-  if (!(await fs.pathExists(libsDir))) return res.status(404).json({ error: 'Build directory not found' });
-
-  const files = await fs.readdir(libsDir);
-  const jar = files.find(f => f.endsWith('.jar') && !f.includes('sources') && !f.includes('javadoc'));
-  if (!jar) return res.status(404).json({ error: 'No JAR found. Build may have failed.' });
-
-  res.download(path.join(libsDir, jar), jar);
-});
-
-// Legacy download route
-app.get('/api/download/:zipName', async (req, res) => {
-  const { zipName } = req.params;
-  if (!/^[\w\-\.]+\.zip$/.test(zipName)) return res.status(400).json({ error: 'Invalid filename' });
-
-  const zipPath = path.join('/var/codexmc-output', zipName);
-  if (!(await fs.pathExists(zipPath))) return res.status(404).json({ error: 'File not found' });
-
-  res.download(zipPath, zipName);
-});
-
-// ─────────────────────────────────────────────
-// HEALTH
-// ─────────────────────────────────────────────
-
+// Health check endpoint (no rate limiting)
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    model: 'deepseek/deepseek-r1:free',
-    activeSessions: activeSessions.size,
-    uptime: Math.floor(process.uptime()),
-    workspace: WORKSPACE_DIR,
+    server: {
+      nodeEnv: config.server.nodeEnv,
+      uptime: Math.floor(process.uptime()),
+      memory: process.memoryUsage(),
+      version: require('../package.json').version
+    },
+    ai: {
+      provider: config.ai.provider,
+      model: config.ai.model
+    },
+    features: {
+      conversations: true,
+      streaming: true,
+      authentication: true,
+      rateLimiting: true,
+      websocket: true
+    }
   });
 });
 
-// ─────────────────────────────────────────────
-// SPA FALLBACK
-// ─────────────────────────────────────────────
+// API routes
+app.use('/auth', authRoutes);
+app.use('/conversation', conversationRoutes);
+app.use('/api', apiRoutes);
 
+// WebSocket endpoint
+app.ws('/ws/:sessionId', (ws, req) => {
+  websocketService.handleConnection(ws, req);
+});
+
+// Legacy WebSocket support (backward compatibility)
+app.ws('/ws', (ws, req) => {
+  const sessionId = require('crypto').randomUUID();
+  req.params = { sessionId };
+  websocketService.handleConnection(ws, req);
+});
+
+// API documentation
+app.get('/api/docs', (req, res) => {
+  res.json({
+    title: 'CodexMC API Documentation v2.0',
+    version: '2.0.0',
+    baseUrl: `${config.server.siteUrl}/api`,
+    features: [
+      'Real-time streaming responses',
+      'Conversation history and context management',
+      'Message editing and regeneration',
+      'User authentication and guest sessions',
+      'Advanced rate limiting and security',
+      'Comprehensive logging and monitoring',
+      'WebSocket support for real-time communication'
+    ],
+    endpoints: {
+      authentication: {
+        'POST /auth/register': 'Register new user',
+        'POST /auth/login': 'Login user',
+        'POST /auth/guest': 'Create guest session',
+        'POST /auth/verify': 'Verify JWT token',
+        'POST /auth/refresh': 'Refresh JWT token'
+      },
+      conversations: {
+        'POST /conversation/sessions': 'Create new conversation session',
+        'GET /conversation/sessions/:sessionId/history': 'Get conversation history',
+        'POST /conversation/sessions/:sessionId/chat': 'Send message and get response',
+        'POST /conversation/sessions/:sessionId/chat/stream': 'Streaming chat (SSE)',
+        'POST /conversation/sessions/:sessionId/regenerate': 'Regenerate last response',
+        'PUT /conversation/sessions/:sessionId/messages/:messageId': 'Edit message',
+        'DELETE /conversation/sessions/:sessionId/messages': 'Clear conversation',
+        'GET /conversation/sessions/:sessionId/stats': 'Get session statistics',
+        'DELETE /conversation/sessions/:sessionId': 'Delete session'
+      },
+      modGeneration: {
+        'GET /api/versions/:loader': 'Get available mod loader versions',
+        'POST /api/generate': 'Generate mod (legacy endpoint)',
+        'GET /api/download/source/:workId': 'Download source code',
+        'GET /api/download/jar/:workId': 'Download compiled JAR'
+      },
+      system: {
+        'GET /api/health': 'Health check',
+        'GET /api/system/info': 'System information and stats',
+        'GET /api/docs': 'This API documentation'
+      },
+      websocket: {
+        'WS /ws/:sessionId': 'WebSocket connection for real-time chat and generation',
+        'WS /ws': 'Legacy WebSocket endpoint (auto-generates session ID)'
+      }
+    }
+  });
+});
+
+// SPA fallback for frontend
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// ─────────────────────────────────────────────
-// START
-// ─────────────────────────────────────────────
+// Error handling middleware
+app.use((error, req, res, next) => {
+  logger.error('Unhandled error', {
+    error: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method
+  });
 
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
-
-app.listen(PORT, HOST, () => {
-  console.log(`✅ CodexMC running at http://${HOST}:${PORT}`);
-  console.log(`🤖 Model: deepseek/deepseek-r1:free (via OpenRouter)`);
-  console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: config.server.nodeEnv === 'development' ? error.message : 'Something went wrong'
+  });
 });
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    message: `Endpoint ${req.method} ${req.url} not found`
+  });
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  
+  try {
+    await db.close();
+    logger.info('Database connections closed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown', { error: error.message });
+    process.exit(1);
+  }
+});
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  
+  try {
+    await db.close();
+    logger.info('Database connections closed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown', { error: error.message });
+    process.exit(1);
+  }
+});
+
+// Start server
+async function startServer() {
+  try {
+    // Initialize database
+    await db.initialize();
+    logger.info('Database initialized successfully');
+
+    // Start listening
+    const PORT = config.server.port;
+    const HOST = config.server.host;
+
+    app.listen(PORT, HOST, () => {
+      logger.info('CodexMC server started', {
+        port: PORT,
+        host: HOST,
+        environment: config.server.nodeEnv,
+        aiProvider: config.ai.provider,
+        aiModel: config.ai.model
+      });
+
+      console.log(`\n\x1b[32m\x1b[1m=== CodexMC Server v2.0 Started ===\x1b[0m`);
+      console.log(`\x1b[36mServer:\x1b[0m http://${HOST}:${PORT}`);
+      console.log(`\x1b[36mAPI Docs:\x1b[0m http://${HOST}:${PORT}/api/docs`);
+      console.log(`\x1b[36mHealth Check:\x1b[0m http://${HOST}:${PORT}/api/health`);
+      console.log(`\x1b[36mAI Provider:\x1b[0m ${config.ai.provider} (${config.ai.model})`);
+      console.log(`\x1b[36mEnvironment:\x1b[0m ${config.server.nodeEnv}`);
+      console.log(`\x1b[32m=== Features Enabled ===\x1b[0m`);
+      console.log(`\x1b[32m\u2713 Real-time conversations\x1b[0m`);
+      console.log(`\x1b[32m\u2713 Streaming responses\x1b[0m`);
+      console.log(`\x1b[32m\u2713 User authentication\x1b[0m`);
+      console.log(`\x1b[32m\u2713 Rate limiting\x1b[0m`);
+      console.log(`\x1b[32m\u2713 WebSocket support\x1b[0m`);
+      console.log(`\x1b[32m\u2713 Comprehensive logging\x1b[0m`);
+      console.log(`\n`);
+    });
+
+  } catch (error) {
+    logger.error('Failed to start server', { error: error.message });
+    console.error('Failed to start server:', error.message);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
 
 module.exports = app;
