@@ -1,48 +1,67 @@
 const axios = require('axios');
 
 // ==========================================
-// GROQ AI CLIENT (Free, No Rate Limits)
+// LM STUDIO CLIENT (Local AI — No API Key Needed)
+// https://lmstudio.ai/docs/api
 // ==========================================
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Updated to the newest, active Groq models
-const PRIMARY_MODEL = 'llama-3.3-70b-versatile'; 
-const FAST_MODEL = 'llama-3.1-8b-instant'; 
+// LM Studio exposes an OpenAI-compatible endpoint at localhost:1234 by default.
+// Start it with: lms server start
+// Set LM_STUDIO_URL in .env to override (e.g. for remote/headless deployments).
+const LM_STUDIO_URL = (process.env.LM_STUDIO_URL || 'http://localhost:1234') + '/v1/chat/completions';
 
-async function callGroq({ messages, maxTokens = 4096, temperature = 0.2, isRepair = false }) {
-  if (!GROQ_API_KEY) {
-    throw new Error('Missing GROQ_API_KEY environment variable. Get one free at https://console.groq.com/keys');
-  }
+// Model identifier — set LM_STUDIO_MODEL in .env to match whatever model you have loaded.
+// Examples: "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF"
+//           "openai/gpt-oss-20b"
+// Leave as "local-model" to use whatever is currently loaded in LM Studio.
+const PRIMARY_MODEL = process.env.LM_STUDIO_MODEL || 'local-model';
+const FAST_MODEL = process.env.LM_STUDIO_FAST_MODEL || PRIMARY_MODEL;
 
+async function callLMStudio({ messages, maxTokens = 4096, temperature = 0.2, isRepair = false }) {
   const model = isRepair ? FAST_MODEL : PRIMARY_MODEL;
 
+  // Optional bearer token — set LM_API_TOKEN in .env if you've enabled auth.
+  const headers = { 'Content-Type': 'application/json' };
+  if (process.env.LM_API_TOKEN) {
+    headers['Authorization'] = `Bearer ${process.env.LM_API_TOKEN}`;
+  }
+
   try {
-    const response = await axios.post(GROQ_URL, {
+    const response = await axios.post(LM_STUDIO_URL, {
       model,
       messages,
       temperature,
       max_tokens: maxTokens,
-      response_format: { type: "json_object" } // Forces perfect JSON, no markdown!
     }, {
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 120000, // 2 minute timeout
+      headers,
+      timeout: 180000, // 3 minutes — local models can be slow
     });
 
     const content = response.data.choices[0].message.content;
     return {
       content,
-      model: response.data.model,
+      model: response.data.model || model,
     };
   } catch (error) {
     const status = error.response?.status;
     const msg = error.response?.data?.error?.message || error.message;
-    if (status === 429) throw new Error(`Groq rate limit error: ${msg}`);
-    if (status === 401) throw new Error(`Groq API key invalid: ${msg}`);
-    throw new Error(`Groq API error: ${msg}`);
+
+    if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
+      throw new Error(
+        `Cannot connect to LM Studio at ${LM_STUDIO_URL}. ` +
+        `Make sure LM Studio is running and the server is started:\n` +
+        `  lms server start\n` +
+        `Or set LM_STUDIO_URL in your .env to the correct address.`
+      );
+    }
+    if (status === 503) {
+      throw new Error(
+        `LM Studio returned 503 — no model is loaded. ` +
+        `Load a model in the LM Studio UI or run: lms get <model-name>`
+      );
+    }
+    if (status === 401) throw new Error(`LM Studio auth error: ${msg}. Check LM_API_TOKEN in your .env.`);
+    throw new Error(`LM Studio API error (${status || 'unknown'}): ${msg}`);
   }
 }
 
@@ -71,7 +90,6 @@ function vectorizePrompt(text) {
     term,
     weight: Number((1 - (index * 0.05)).toFixed(2)),
   }));
-
   return {
     approximateEmbeddingDimensions: 1536,
     topTerms: weightedTerms,
@@ -104,7 +122,7 @@ function buildArchitectureMessages(request, analysis, helpers) {
   return [
     {
       role: 'system',
-      content: 'You are a senior Minecraft mod architect. Design a concise build plan. Return ONLY valid JSON.'
+      content: 'You are a senior Minecraft mod architect. Design a concise build plan. Return ONLY valid JSON with no markdown formatting, no code fences, and no extra text before or after.',
     },
     {
       role: 'user',
@@ -138,7 +156,7 @@ function buildGenerationMessages(request, analysis, architecture, helpers) {
   return [
     {
       role: 'system',
-      content: 'You are an expert Minecraft mod developer. Build the final response containing complete project files. Return ONLY a valid JSON object.'
+      content: 'You are an expert Minecraft mod developer. Build the final response containing complete project files. Return ONLY a valid JSON object with no markdown formatting, no code fences, and no extra text.',
     },
     {
       role: 'user',
@@ -151,7 +169,7 @@ function buildRepairMessages(request, architecture, previousResponse, validation
   return [
     {
       role: 'system',
-      content: 'Repair the generated Minecraft mod JSON. Return ONLY valid JSON. Keep the project complete and compilable.'
+      content: 'Repair the generated Minecraft mod JSON. Return ONLY valid JSON with no markdown or extra text. Keep the project complete and compilable.',
     },
     {
       role: 'user',
@@ -174,8 +192,14 @@ function extractJSON(text) {
   try {
     return JSON.parse(text.trim());
   } catch {}
-  
-  // Fallback just in case, though Groq's response_format prevents this
+
+  // Strip markdown code fences — local models often wrap JSON in them
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()); } catch {}
+  }
+
+  // Last resort: find outermost { }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start !== -1 && end !== -1) {
@@ -196,7 +220,7 @@ async function buildResponsePlan(request, helpers, emit) {
   emit('pipeline', `Tokenized prompt into ~${analysis.tokenization.approximateTokenCount} tokens`);
   emit('pipeline', `Mapped semantic intent: ${analysis.vectorization.inferredIntent}`);
 
-  const architectureResult = await callGroq({
+  const architectureResult = await callLMStudio({
     messages: buildArchitectureMessages(request, analysis, helpers),
     maxTokens: 3000,
     temperature: 0.2,
@@ -213,7 +237,7 @@ async function buildResponsePlan(request, helpers, emit) {
 }
 
 async function generateProjectFromPlan(request, plan, helpers, emit, validateMod) {
-  const generationResult = await callGroq({
+  const generationResult = await callLMStudio({
     messages: buildGenerationMessages(request, plan.analysis, plan.architecture, helpers),
     maxTokens: helpers.maxTokens || 8000,
     temperature: helpers.temperature || 0.2,
@@ -232,8 +256,7 @@ async function generateProjectFromPlan(request, plan, helpers, emit, validateMod
   } catch (error) {
     emit('pipeline', 'Validation failed, running repair pass');
 
-    // Uses the FAST_MODEL automatically for repairs!
-    const repairResult = await callGroq({
+    const repairResult = await callLMStudio({
       messages: buildRepairMessages(
         request,
         plan.architecture,
@@ -243,7 +266,7 @@ async function generateProjectFromPlan(request, plan, helpers, emit, validateMod
       ),
       maxTokens: helpers.maxTokens || 8000,
       temperature: 0.15,
-      isRepair: true, 
+      isRepair: true,
     });
 
     const parsed = extractJSON(repairResult.content);

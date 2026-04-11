@@ -3,7 +3,7 @@ const fs = require('fs-extra');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
 
-const DATA_DIR = path.resolve(config.workspace.dir, '_chat_store');
+const DATA_DIR = path.resolve(process.env.WORKSPACE_DIR || './data', '_chat_store');
 const CHATS_DIR = path.join(DATA_DIR, 'chats');
 const INDEX_FILE = path.join(DATA_DIR, 'index.json');
 

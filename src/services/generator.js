@@ -586,7 +586,7 @@ async function generateMod(request, onProgress) {
       javaMajor: requiredJavaMajor(request.mcVersion), 
       javaVersionEnum: getJavaVersionString(request.mcVersion),
       gradleVersion: getGradleVersion(request.mcVersion, request.loader), 
-      maxTokens: 8000,             // Hardcoded safe limit for Groq
+      maxTokens: 8000,             // Token limit for LM Studio
       temperature: 0.2,           // Hardcoded for strict JSON
       promptFactory,
     };

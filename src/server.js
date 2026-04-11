@@ -44,12 +44,12 @@ const apiLimiter = rateLimit({
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    model: config.openrouter.primaryModel,
-    fallbackModel: config.openrouter.fallbackModel,
-    codingModel: config.openrouter.codingPrimaryModel,
-    codingFallbackModel: config.openrouter.codingFallbackModel,
-    modelCandidates: config.openrouter.modelCandidates,
-    reasoningEffort: config.openrouter.reasoningEffort,
+    model: config.lmstudio.model,
+    fallbackModel: config.lmstudio.fastModel,
+    codingModel: config.lmstudio.model,
+    codingFallbackModel: config.lmstudio.fastModel,
+    modelCandidates: [config.lmstudio.model],
+    reasoningEffort: undefined,
     uptime: Math.floor(process.uptime()),
   });
 });
@@ -215,12 +215,7 @@ const PORT = config?.server?.port || process.env.PORT || 3000;
 app.listen(PORT, () => {
   logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
 
-  const model =
-    config?.openrouter?.codingPrimaryModel ||
-    config?.openrouter?.primaryModel ||
-    config?.openrouter?.model ||
-    process.env.OPENROUTER_MODEL ||
-    "unknown";
+  const model = config?.lmstudio?.model || process.env.LM_STUDIO_MODEL || "unknown";
 
   logger.info(`AI Model: ${model}`);
 });
