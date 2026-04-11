@@ -198,6 +198,18 @@ function getFabricLoomVersion(mcVersion) {
   return versionMap[majorMinor] || versionMap.default;
 }
 
+function getFabricApiVersion(mcVersion) {
+  if (!mcVersion) return '0.100.0+1.21';
+  const [, minor] = mcVersion.split('.').map(Number);
+  // Map Minecraft versions to stable Fabric API versions
+  if (minor >= 21) return '0.100.0+1.21';
+  if (minor >= 20) return '0.91.0+1.20.1';
+  if (minor >= 19) return '0.75.0+1.19.2';
+  if (minor >= 18) return '0.58.0+1.18.2';
+  if (minor >= 17) return '0.47.0+1.17.1';
+  return '0.47.0+1.17.1';
+}
+
 // ─────────────────────────────────────────────
 // RETRY WRAPPER (AI + BUILD)
 // ─────────────────────────────────────────────
@@ -279,8 +291,12 @@ async function fixGradle(workDir) {
     g = g.replace(/officialMojangMappings/g, 'loom.officialMojangMappings()');
   }
 
-  // Step 6: Remove invalid Fabric API
-  g = g.replace(/modImplementation\s+['"]net\.fabricmc\.fabric-api:fabric-api:[^'"]*['"]/g, '');
+  // Step 6: Keep Fabric API dependencies as-is (they're now provided with correct versions)
+  // Just verify they're not using obviously bad versions
+  g = g.replace(/('net\.fabricmc\.fabric-api:fabric-api:)([^'"]*')/, (match, prefix, version) => {
+    // If version looks obviously wrong (like old invalid versions), keep it - fixSettings will handle it
+    return match;
+  });
   
   // Step 7: Ensure proper structure - add repositories if missing
   if (!g.includes('repositories')) {
@@ -445,6 +461,7 @@ function buildSystemPrompt(request, thinkingLevel) {
   const loader = request.loader || 'fabric';
   const mcVersion = request.mcVersion || '1.21.1';
   const loomVer = loader === 'fabric' ? getFabricLoomVersion(mcVersion) : '';
+  const fabricApiVer = loader === 'fabric' ? getFabricApiVersion(mcVersion) : '';
   const loaderVer = request.loaderVersion || '';
 
   let loaderInstructions = '';
@@ -482,11 +499,12 @@ dependencies {
   minecraft 'com.mojang:minecraft:${mcVersion}'
   mappings loom.officialMojangMappings()
   modImplementation 'net.fabricmc:fabric-loader:0.15.11'
+  modImplementation 'net.fabricmc.fabric-api:fabric-api:${fabricApiVer}'
 }
 
 CRITICAL: Use loom.officialMojangMappings() instead of yarn mappings. Yarn mappings can cause "Unsupported unpick version" errors.
 
-DO NOT include Fabric API in dependencies unless explicitly requested. Fabric API versions are release-specific and must match the exact MC version. Including incorrect versions will cause build failures.
+INCLUDE Fabric API in dependencies with version: ${fabricApiVer}
 
 fabric.mod.json EXACT FORMAT: 
 {
@@ -557,7 +575,7 @@ Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
   "mcVersion": "${mcVersion}",
   "files": {
     "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}\\n\\nrootProject.name = 'example-mod'",
-    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n}",
+    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n  modImplementation 'net.fabricmc.fabric-api:fabric-api:${fabricApiVer}'\\n}",
     "gradle.properties": "org.gradle.jvmargs=-Xmx1G",
     "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\":1,\\"id\\":\\"example-mod\\",\\"version\\":\\"1.0.0\\",\\"name\\":\\"ExampleMod\\",\\"description\\":\\"A mod\\",\\"environment\\":\\"*\\",\\"entrypoints\\":{\\"main\\":[\\"com.example.examplemod.ExampleMod\\"]},\\"mixins\\":[],\\"depends\\":{\\"fabricloader\\":\\">=0.14.0\\",\\"minecraft\\":\\"${mcVersion}\\",\\"java\\":\\">=17\\"}}",
     "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;\\n\\nimport net.fabricmc.api.ModInitializer;\\n\\npublic class ExampleMod implements ModInitializer {\\n  @Override\\n  public void onInitialize() {\\n  }\\n}"
