@@ -1,31 +1,31 @@
 # CodexMC v3 — AI Minecraft Mod Generator
 
-Completely rebuilt with Google Gemini 2.5 Flash and a ChatGPT-style UI.
+Completely rebuilt with DeepSeek via OpenRouter and a ChatGPT-style UI.
 
 ## What changed from v2
 | | v2 | v3 |
 |---|---|---|
-| AI Model | Mistral 7b (OpenRouter) | **Google Gemini 2.5 Flash** |
-| AI Key | Paid OpenRouter | **Free (Google AI Studio)** |
-| Thinking | Custom prompting | **Native Gemini thinking tokens** |
+| AI Model | Mistral 7b (OpenRouter) | **DeepSeek Chat (OpenRouter)** |
+| AI Key | Paid OpenRouter | **OpenRouter API key** |
+| Thinking | Custom prompting | **Multi-level quality prompting** |
 | UI | Custom dark theme | **ChatGPT-style** |
 | Backend | Complex multi-file | **Clean modular** |
 
-## Why Gemini 2.5 Flash?
-- **Best free Java coding model** — outperforms Mistral, Llama, and older Gemini models on code tasks
-- **Native extended thinking** — up to 24K thinking tokens for deeper reasoning
-- **1M token context** — can handle large codebases
-- **Genuinely free** — Google AI Studio free tier, no credit card needed
+## Why DeepSeek via OpenRouter?
+- **Strong Java coding model** — excellent at structured code generation tasks
+- **OpenRouter flexibility** — swap to any other model by changing one env var
+- **Simple API** — OpenAI-compatible REST API, no vendor-specific SDKs needed
+- **Easy setup** — just an API key, no cloud project or service account required
 
 ## Setup
 
-### 1. Get a free Gemini API key
-Go to [https://aistudio.google.com](https://aistudio.google.com) and click "Get API key". It's free.
+### 1. Get an OpenRouter API key
+Go to [https://openrouter.ai/keys](https://openrouter.ai/keys) and create a free key.
 
 ### 2. Configure
 ```bash
 cp .env.example .env
-# Edit .env and set GEMINI_API_KEY=your_key_here
+# Edit .env and set OPENROUTER_API_KEY=your_key_here
 ```
 
 ### 3. Install & run

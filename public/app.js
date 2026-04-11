@@ -197,7 +197,7 @@ function sendPrompt() {
       <div class="ai-content">
         <div class="thinking-indicator">
           <div class="thinking-dots"><span></span><span></span><span></span></div>
-          <span>Gemini is thinking...</span>
+          <span>DeepSeek is thinking...</span>
         </div>
       </div>
     </div>

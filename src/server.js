@@ -38,7 +38,7 @@ const apiLimiter = rateLimit({
 
 // Health
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', model: config.gemini.model, uptime: Math.floor(process.uptime()) });
+  res.json({ status: 'ok', model: config.openrouter.model, uptime: Math.floor(process.uptime()) });
 });
 
 // Versions
@@ -145,9 +145,8 @@ app.listen(PORT, () => {
   logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
 
   const model =
-    config?.gemini?.model ||
-    config?.ai?.model ||
-    process.env.MODEL ||
+    config?.openrouter?.model ||
+    process.env.OPENROUTER_MODEL ||
     "unknown";
 
   logger.info(`AI Model: ${model}`);

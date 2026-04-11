@@ -1,6 +1,6 @@
 /**
- * CodexMC v3 - Gemini-powered Minecraft Mod Generator
- * Uses Google Gemini 2.5 Flash via Vertex AI (works in USA)
+ * CodexMC v3 - AI-powered Minecraft Mod Generator
+ * Uses DeepSeek via OpenRouter (openrouter.ai)
  */
 
 const axios = require('axios');
@@ -9,25 +9,10 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const archiver = require('archiver');
 const { execSync, spawn } = require('child_process');
-const { GoogleAuth } = require('google-auth-library');
 const config = require('../config');
 const { logger } = require('../utils/logger');
 
 const WORKSPACE_DIR = config.workspace.dir;
-
-// Reuse auth client - handles token refresh automatically
-let _authClient = null;
-async function getAccessToken() {
-  if (!_authClient) {
-    _authClient = new GoogleAuth({
-      keyFile: config.vertex.keyFile,
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    });
-  }
-  const client = await _authClient.getClient();
-  const token = await client.getAccessToken();
-  return token.token;
-}
 
 // Java Auto-Detection
 const javaCache = {};
@@ -107,27 +92,27 @@ function getForgeGradleVersion(mcVersion) {
   return minor >= 20 ? '6.0.+' : '5.1.+';
 }
 
-// Vertex AI Client
-async function callGemini(prompt, thinkingBudget) {
-  const { projectId, location, model, maxTokens, temperature } = config.vertex;
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
-  const token = await getAccessToken();
-
-  const res = await axios.post(url, {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      maxOutputTokens: maxTokens,
-      temperature,
-      thinkingConfig: { thinkingBudget, includeThoughts: false },
-    },
+// OpenRouter Client
+async function callOpenRouter(prompt) {
+  const { apiKey, model, maxTokens, temperature } = config.openrouter;
+  const res = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens,
+    temperature,
   }, {
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': config.server.siteUrl,
+      'X-Title': 'CodexMC',
+    },
     timeout: 240000,
   });
 
-  const candidate = res.data?.candidates?.[0];
-  if (!candidate) throw new Error('Vertex AI returned no candidates');
-  return candidate.content?.parts?.map(p => p.text || '').join('') || '';
+  const choice = res.data?.choices?.[0];
+  if (!choice) throw new Error('OpenRouter returned no choices');
+  return choice.message?.content || '';
 }
 
 function buildDependencies(loader, mcVersion, loaderVersion) {
@@ -291,16 +276,16 @@ async function generateMod(request, onProgress) {
   try {
     await fs.ensureDir(workDir);
     emit('status', `Starting mod generation (Job: ${jobId})`);
-    emit('status', 'Using Google Gemini 2.5 Flash via Vertex AI');
+    emit('status', `Using DeepSeek via OpenRouter (${config.openrouter.model})`);
 
     const thinkingMap = { low: 2048, medium: 8192, high: 24576 };
     const thinkingBudget = thinkingMap[request.thinkingLevel] || 8192;
 
-    emit('ai', `Gemini thinking... (budget: ${thinkingBudget} tokens)`);
+    emit('ai', `DeepSeek thinking... (quality: ${request.thinkingLevel || 'medium'})`);
     emit('ai', `Prompt: "${request.description}"`);
 
     const prompt = buildPrompt(request);
-    const rawResponse = await callGemini(prompt, thinkingBudget);
+    const rawResponse = await callOpenRouter(prompt);
 
     emit('ai', 'Response received, parsing...');
 
@@ -309,9 +294,8 @@ async function generateMod(request, onProgress) {
       mod = extractJSON(rawResponse);
     } catch (e) {
       emit('ai', 'Retrying with stricter JSON prompt...');
-      const retry = await callGemini(
-        `${prompt}\n\nIMPORTANT: Output ONLY the raw JSON object. Start with { and end with }. No other text whatsoever.`,
-        thinkingBudget
+      const retry = await callOpenRouter(
+        `${prompt}\n\nIMPORTANT: Output ONLY the raw JSON object. Start with { and end with }. No other text whatsoever.`
       );
       mod = extractJSON(retry);
     }
