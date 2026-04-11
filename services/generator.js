@@ -261,6 +261,16 @@ async function fixGradle(workDir) {
     g = g.replace(/pluginManagement\s*\{[\s\S]*?\}\s*/m, '');
   }
 
+  // Fix: Replace problematic yarn mappings with officialMojangMappings
+  if (g.includes('yarn:') || g.includes('net.fabricmc:yarn')) {
+    g = g.replace(/mappings\s+['"]net\.fabricmc:yarn:[^'"]+['"]/g, "mappings loom.officialMojangMappings()");
+  }
+
+  // Fix: Ensure officialMojangMappings has proper format
+  if (g.includes('officialMojangMappings') && !g.includes('loom.officialMojangMappings()')) {
+    g = g.replace(/officialMojangMappings/g, 'loom.officialMojangMappings()');
+  }
+
   await fs.writeFile(file, g);
 }
 
@@ -392,10 +402,17 @@ plugins {
 repositories {
   mavenCentral()
   maven {
-    name = 'Fabric'
     url = 'https://maven.fabricmc.net/'
   }
 }
+
+dependencies {
+  minecraft 'com.mojang:minecraft:${mcVersion}'
+  mappings loom.officialMojangMappings()
+  modImplementation 'net.fabricmc:fabric-loader:0.15.11'
+}
+
+CRITICAL: Use loom.officialMojangMappings() instead of yarn mappings. Yarn mappings can cause "Unsupported unpick version" errors.
 
 For Fabric API: fabric-api.version = '${loaderVer || '0.100.0+1.21'}'
 
@@ -469,8 +486,8 @@ Return ONLY valid JSON (NO markdown, NO code blocks, just raw JSON):
   "mcVersion": "${mcVersion}",
   "files": {
     "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}\\n",
-    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\ngroup = 'com.yourname'\\nversion = '1.0'\\n\\nrepositories {\\n  mavenCentral()\\n  maven { url = 'https://maven.fabricmc.net/' }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings 'net.fabricmc:yarn:${mcVersion}+build.1:v2'\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.0'\\n}\\n",
-    "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\nminecraft_version=${mcVersion}\\nfabric_version=0.100.0\\n",
+    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\ngroup = 'com.yourname'\\nversion = '1.0.0'\\narchivesBaseName = 'modname'\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n  modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.2+${mcVersion}'\\n}\\n",
+    "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\nminecraft_version=${mcVersion}\\nfabric_version=0.92.2\\narchnamesBaseName=modname\\n",
     "src/main/resources/fabric.mod.json": "{\\n  \\"schemaVersion\\": 1,\\n  \\"id\\": \\"yourmodid\\",\\n  \\"version\\": \\"1.0.0\\",\\n  \\"name\\": \\"YourModName\\",\\n  \\"description\\": \\"A mod\\",\\n  \\"authors\\": [\\"You\\"],\\n  \\"environment\\": \\"*\\",\\n  \\"entrypoints\\": {\\n    \\"main\\": [\\"com.yourname.yourmodid.YourMod\\"]\\n  },\\n  \\"mixins\\": [],\\n  \\"depends\\": {\\n    \\"fabricloader\\": \\">=0.14.0\\",\\n    \\"minecraft\\": \\"${mcVersion}\\",\\n    \\"java\\": \\">=17\\"\\n  }\\n}\\n",
     "src/main/java/com/yourname/yourmodid/YourMod.java": "package com.yourname.yourmodid;\\n\\nimport net.fabricmc.api.ModInitializer;\\nimport org.slf4j.Logger;\\nimport org.slf4j.LoggerFactory;\\n\\npublic class YourMod implements ModInitializer {\\n  public static final Logger LOGGER = LoggerFactory.getLogger(\\"yourmodid\\");\\n\\n  @Override\\n  public void onInitialize() {\\n    LOGGER.info(\\"Hello from YourMod!\\");\\n  }\\n}\\n"
   }
@@ -603,11 +620,25 @@ function buildMod(workDir, mcVersion, emit) {
       return reject(err);
     }
 
+    // Clean up stale gradle daemon locks and caches
+    const gradleLockFile = path.join(workDir, '.gradle', 'daemon', '*.lock');
+    const logsDir = path.join(workDir, '.gradle', 'daemon');
+    try {
+      if (fs.existsSync(logsDir)) {
+        const files = fs.readdirSync(logsDir);
+        files.forEach(f => {
+          if (f.endsWith('.lock')) {
+            try { fs.unlinkSync(path.join(logsDir, f)); } catch { }
+          }
+        });
+      }
+    } catch { }
+
     emit('info', `Using Java ${javaMajor} (${javaHome})`);
 
     const cmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 
-    const proc = spawn(cmd, ['build', '--no-daemon'], {
+    const proc = spawn(cmd, ['clean', 'build', '--no-daemon', '--warning-mode=none'], {
       cwd: workDir,
       shell: true,
       env: {
