@@ -9,7 +9,7 @@ const archiver = require('archiver');
 const { execSync, spawn } = require('child_process');
 const config = require('../config');
 const { logger } = require('../utils/logger');
-const { buildResponsePlan, generateProjectFromPlan, checkLMStudioHealth } = require('./responsePipeline');
+const { buildResponsePlan, generateProjectFromPlan, checkPuterHealth } = require('./responsePipeline');
 
 const WORKSPACE_DIR = path.resolve(config.workspace.dir);
 const MAX_AUTO_FIX_RETRIES = 2;
@@ -368,9 +368,9 @@ async function generateMod(request, onProgress) {
     emit('status', isFixRequest ? `Starting FIX pass for Job: ${request.previousJobId}` : `Starting mod generation (Job: ${jobId})`);
 
     // PRE-FLIGHT CHECK
-    emit('pipeline', 'Verifying LM Studio connection...');
-    await checkLMStudioHealth();
-    emit('pipeline', 'LM Studio connected. Starting AI pipeline...');
+    emit('pipeline', 'Verifying puter.js connection...');
+    await checkPuterHealth();
+    emit('pipeline', 'puter.js connected. Starting AI pipeline...');
 
     let originalContext = null;
     let promptFactory;
