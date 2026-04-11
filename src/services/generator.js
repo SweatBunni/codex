@@ -1,6 +1,6 @@
 /**
  * CodexMC v3 - AI-powered Minecraft Mod Generator
- * Uses DeepSeek via OpenRouter (openrouter.ai)
+ * Uses OpenRouter (openrouter.ai)
  */
 
 const axios = require('axios');
@@ -159,24 +159,51 @@ function getJavaVersionString(mcVersion) {
 // OpenRouter Client
 async function callOpenRouter(prompt) {
   const { apiKey, model, maxTokens, temperature } = config.openrouter;
-  const res = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-    model,
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: maxTokens,
-    temperature,
-  }, {
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': config.server.siteUrl,
-      'X-Title': 'CodexMC',
-    },
-    timeout: 240000,
-  });
+  try {
+    const res = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      temperature,
+    }, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': config.server.siteUrl,
+        'X-Title': 'CodexMC',
+      },
+      timeout: 240000,
+    });
 
-  const choice = res.data?.choices?.[0];
-  if (!choice) throw new Error('OpenRouter returned no choices');
-  return choice.message?.content || '';
+    const choice = res.data?.choices?.[0];
+    if (!choice) throw new Error('OpenRouter returned no choices');
+    return choice.message?.content || '';
+  } catch (error) {
+    const status = error?.response?.status;
+    const providerMessage =
+      error?.response?.data?.error?.message ||
+      error?.response?.data?.message ||
+      error?.response?.data?.error?.metadata?.raw ||
+      error?.message;
+
+    if (status === 402) {
+      throw new Error(`OpenRouter billing/credits error (402): ${providerMessage || 'the selected model is not currently available for this API key'}`);
+    }
+
+    if (status === 401) {
+      throw new Error(`OpenRouter authentication error (401): ${providerMessage || 'check OPENROUTER_API_KEY'}`);
+    }
+
+    if (status === 429) {
+      throw new Error(`OpenRouter rate limit error (429): ${providerMessage || 'too many requests, please try again shortly'}`);
+    }
+
+    if (status) {
+      throw new Error(`OpenRouter request failed (${status}): ${providerMessage || 'unknown provider error'}`);
+    }
+
+    throw error;
+  }
 }
 
 function buildDependencies(loader, mcVersion, loaderVersion) {
@@ -543,12 +570,12 @@ async function generateMod(request, onProgress) {
   try {
     await fs.ensureDir(workDir);
     emit('status', `Starting mod generation (Job: ${jobId})`);
-    emit('status', `Using DeepSeek via OpenRouter (${config.openrouter.model})`);
+    emit('status', `Using OpenRouter (${config.openrouter.model})`);
 
     const thinkingMap = { low: 2048, medium: 8192, high: 24576 };
     const thinkingBudget = thinkingMap[request.thinkingLevel] || 8192;
 
-    emit('ai', `DeepSeek thinking... (quality: ${request.thinkingLevel || 'medium'})`);
+    emit('ai', `Model thinking... (quality: ${request.thinkingLevel || 'medium'})`);
     emit('ai', `Prompt: "${request.description}"`);
 
     const prompt = buildPrompt(request);
@@ -561,10 +588,14 @@ async function generateMod(request, onProgress) {
       mod = extractJSON(rawResponse);
     } catch (e) {
       emit('ai', 'Retrying with stricter JSON prompt...');
-      const retry = await callOpenRouter(
-        `${prompt}\n\nIMPORTANT: Output ONLY the raw JSON object. Start with { and end with }. No other text whatsoever.`
-      );
-      mod = extractJSON(retry);
+      try {
+        const retry = await callOpenRouter(
+          `${prompt}\n\nIMPORTANT: Output ONLY the raw JSON object. Start with { and end with }. No other text whatsoever.`
+        );
+        mod = extractJSON(retry);
+      } catch (retryError) {
+        throw retryError;
+      }
     }
 
     mod = normalizeGeneratedMod(mod, request);

@@ -8,7 +8,7 @@ module.exports = {
   },
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
-    model: process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat',
+    model: process.env.OPENROUTER_MODEL || 'qwen/qwen3-coder:free',
     maxTokens: 32768,
     temperature: 0.4,
   },

@@ -196,7 +196,7 @@ function createAssistantShell() {
       <div class="ai-content">
         <div class="thinking-indicator">
           <div class="thinking-dots"><span></span><span></span><span></span></div>
-          <span>DeepSeek is thinking...</span>
+          <span>Model is thinking...</span>
         </div>
       </div>
     </div>

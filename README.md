@@ -1,17 +1,17 @@
 # CodexMC v3 — AI Minecraft Mod Generator
 
-Completely rebuilt with DeepSeek via OpenRouter and a ChatGPT-style UI.
+Completely rebuilt with OpenRouter and a ChatGPT-style UI.
 
 ## What changed from v2
 | | v2 | v3 |
 |---|---|---|
-| AI Model | Mistral 7b (OpenRouter) | **DeepSeek Chat (OpenRouter)** |
+| AI Model | Mistral 7b (OpenRouter) | **Qwen 3 Coder Free (OpenRouter)** |
 | AI Key | Paid OpenRouter | **OpenRouter API key** |
 | Thinking | Custom prompting | **Multi-level quality prompting** |
 | UI | Custom dark theme | **ChatGPT-style** |
 | Backend | Complex multi-file | **Clean modular** |
 
-## Why DeepSeek via OpenRouter?
+## Why OpenRouter?
 - **Strong Java coding model** — excellent at structured code generation tasks
 - **OpenRouter flexibility** — swap to any other model by changing one env var
 - **Simple API** — OpenAI-compatible REST API, no vendor-specific SDKs needed
@@ -26,6 +26,7 @@ Go to [https://openrouter.ai/keys](https://openrouter.ai/keys) and create a free
 ```bash
 cp .env.example .env
 # Edit .env and set OPENROUTER_API_KEY=your_key_here
+# Default free model: qwen/qwen3-coder:free
 ```
 
 ### 3. Install & run
