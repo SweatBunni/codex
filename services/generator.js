@@ -306,18 +306,19 @@ async function fixSettings(workDir) {
   if (await fs.pathExists(settingsFile)) {
     let settings = await fs.readFile(settingsFile, 'utf8');
     
-    // Add rootProject.name if missing - MUST be AFTER pluginManagement
-    if (!settings.includes('rootProject.name')) {
-      // Check if pluginManagement exists
-      if (settings.includes('pluginManagement')) {
-        // Add rootProject.name after pluginManagement block
-        settings = settings.replace(
-          /(\bpluginManagement\s*\{[\s\S]*?\})/,
-          '$1\n\nrootProject.name = \'modproject\''
-        );
-      } else {
-        // pluginManagement doesn't exist yet, add both with pluginManagement first
-        const pluginMgmt = `pluginManagement {
+    // pluginManagement MUST be first; move it if it isn't
+    if (settings.includes('pluginManagement')) {
+      const pluginMgmtMatch = settings.match(/(pluginManagement\s*\{[\s\S]*?\})/m);
+      if (pluginMgmtMatch) {
+        const pluginMgmt = pluginMgmtMatch[0];
+        // Remove pluginManagement from its current position
+        settings = settings.replace(pluginMgmt, '').trim();
+        // Add it back at the start
+        settings = pluginMgmt + '\n\n' + settings;
+      }
+    } else {
+      // pluginManagement doesn't exist, add it at the start
+      const pluginMgmt = `pluginManagement {
   repositories {
     maven {
       name = 'Fabric'
@@ -325,11 +326,17 @@ async function fixSettings(workDir) {
     }
     gradlePluginPortal()
   }
-}
-
-rootProject.name = 'modproject'`;
-        settings = pluginMgmt + '\n\n' + settings;
-      }
+}`;
+      settings = pluginMgmt + '\n\n' + settings;
+    }
+    
+    // Add rootProject.name if missing - MUST be AFTER pluginManagement
+    if (!settings.includes('rootProject.name')) {
+      // Add after the pluginManagement block
+      settings = settings.replace(
+        /(pluginManagement\s*\{[\s\S]*?\})/,
+        '$1\n\nrootProject.name = \'modproject\''
+      );
     }
     
     // Fix common mistake: Fabric() method instead of proper maven block
@@ -498,7 +505,7 @@ IMPORTANT:
 - Use EXACT plugin versions above
 - All files MUST be valid and COMPLETE
 - Include BOTH settings.gradle AND build.gradle
-- settings.gradle: rootProject.name = 'modname' on first line, then pluginManagement
+- settings.gradle: pluginManagement MUST be FIRST, then rootProject.name
 - build.gradle: plugins first, then repositories, then dependencies
 - Do NOT put pluginManagement in build.gradle (settings.gradle ONLY)
 - Return COMPLETE file contents with proper \\n escapes
@@ -512,7 +519,7 @@ Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
   "packageName": "com.example.examplemod",
   "mcVersion": "${mcVersion}",
   "files": {
-    "settings.gradle": "rootProject.name='example-mod'\\npluginManagement{repositories{maven{name='Fabric';url='https://maven.fabricmc.net/'}gradlePluginPortal()}}}",
+    "settings.gradle": "pluginManagement{repositories{maven{name='Fabric';url='https://maven.fabricmc.net/'}gradlePluginPortal()}}\\nrootProject.name='example-mod'",
     "build.gradle": "plugins{id 'fabric-loom' version '${loomVer}'}repositories{mavenCentral();maven{url='https://maven.fabricmc.net/'}}dependencies{minecraft 'com.mojang:minecraft:${mcVersion}';mappings loom.officialMojangMappings();modImplementation 'net.fabricmc:fabric-loader:0.15.11'}",
     "gradle.properties": "org.gradle.jvmargs=-Xmx1G",
     "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\":1,\\"id\\":\\"example-mod\\",\\"version\\":\\"1.0.0\\",\\"name\\":\\"ExampleMod\\",\\"description\\":\\"A mod\\",\\"environment\\":\\"*\\",\\"entrypoints\\":{\\"main\\":[\\"com.example.examplemod.ExampleMod\\"]},\\"mixins\\":[],\\"depends\\":{\\"fabricloader\\":\\">=0.14.0\\",\\"minecraft\\":\\"${mcVersion}\\",\\"java\\":\\">=17\\"}}",
