@@ -25,7 +25,7 @@ const config = {
   // AI Configuration
   ai: {
     provider: process.env.AI_PROVIDER || 'openrouter',
-    apiKey: process.env.OPENROUTER_API_KEY,
+    apiKey: process.env.OPENROUTER_API_KEY || process.env.MISTRAL_API_KEY || process.env.OPENAI_API_KEY,
     model: process.env.AI_MODEL || 'mistralai/mistral-7b-instruct',
     maxTokens: parseInt(process.env.AI_MAX_TOKENS) || 4000,
     temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7

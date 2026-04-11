@@ -27,6 +27,8 @@ class AIService {
         response = await this.openAIGenerate(messages, options);
       } else if (this.provider === 'anthropic') {
         response = await this.anthropicGenerate(messages, options);
+      } else if (this.provider === 'mistral') {
+        response = await this.mistralGenerate(messages, options);
       } else {
         throw new Error(`Unsupported AI provider: ${this.provider}`);
       }
@@ -155,6 +157,42 @@ class AIService {
         model: this.model,
         usage: response.data.usage,
         finishReason: response.data.stop_reason
+      }
+    };
+  }
+
+  async mistralGenerate(messages, options = {}) {
+    const url = 'https://api.mistral.ai/v1/chat/completions';
+    
+    const payload = {
+      model: this.model,
+      messages: this.formatMessages(messages),
+      max_tokens: options.maxTokens || this.maxTokens,
+      temperature: options.temperature || this.temperature,
+      stream: options.stream || false,
+      ...options
+    };
+
+    const response = await axios.post(url, payload, {
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    });
+
+    if (options.stream) {
+      return this.handleStreamResponse(response);
+    }
+
+    const choice = response.data.choices[0];
+    return {
+      content: choice.message.content,
+      metadata: {
+        provider: this.provider,
+        model: this.model,
+        usage: response.data.usage,
+        finishReason: choice.finish_reason
       }
     };
   }
