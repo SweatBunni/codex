@@ -1,13 +1,60 @@
-const { callOpenRouter } = require('./openrouterClient');
+const axios = require('axios');
 
+// ==========================================
+// GROQ AI CLIENT (Free, No Rate Limits)
+// ==========================================
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+// We use the 70b model for main generation, and the 8b model for instant auto-fixes
+const PRIMARY_MODEL = 'llama-3.1-70b-versatile';
+const FAST_MODEL = 'llama-3.1-8b-instant'; 
+
+async function callGroq({ messages, maxTokens = 4096, temperature = 0.2, isRepair = false }) {
+  if (!GROQ_API_KEY) {
+    throw new Error('Missing GROQ_API_KEY environment variable. Get one free at https://console.groq.com/keys');
+  }
+
+  const model = isRepair ? FAST_MODEL : PRIMARY_MODEL;
+
+  try {
+    const response = await axios.post(GROQ_URL, {
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" } // Forces perfect JSON, no markdown!
+    }, {
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 120000, // 2 minute timeout
+    });
+
+    const content = response.data.choices[0].message.content;
+    return {
+      content,
+      model: response.data.model,
+    };
+  } catch (error) {
+    const status = error.response?.status;
+    const msg = error.response?.data?.error?.message || error.message;
+    if (status === 429) throw new Error(`Groq rate limit error: ${msg}`);
+    if (status === 401) throw new Error(`Groq API key invalid: ${msg}`);
+    throw new Error(`Groq API error: ${msg}`);
+  }
+}
+
+// ==========================================
+// TEXT ANALYSIS HELPERS
+// ==========================================
 function approximateTokenCount(text) {
   return Math.max(1, Math.ceil((text || '').length / 4));
 }
 
 function tokenizePrompt(text) {
-  const chunks = (text || '')
-    .match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g) || [];
-
+  const chunks = (text || '').match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g) || [];
   return {
     originalLength: (text || '').length,
     approximateTokenCount: approximateTokenCount(text),
@@ -50,15 +97,14 @@ function inferConstraints(text) {
   return constraints;
 }
 
+// ==========================================
+// PROMPT BUILDERS
+// ==========================================
 function buildArchitectureMessages(request, analysis, helpers) {
   return [
     {
       role: 'system',
-      content: [
-        'You are a senior Minecraft mod architect.',
-        'Design the response in a ChatGPT-style staged process: tokenize request, map meaning, predict ideal file structure, then produce a concise build plan.',
-        'Return ONLY valid JSON.',
-      ].join(' '),
+      content: 'You are a senior Minecraft mod architect. Design a concise build plan. Return ONLY valid JSON.'
     },
     {
       role: 'user',
@@ -68,7 +114,6 @@ function buildArchitectureMessages(request, analysis, helpers) {
           loader: request.loader,
           mcVersion: request.mcVersion,
           loaderVersion: request.loaderVersion,
-          thinkingLevel: request.thinkingLevel,
         },
         analysis,
         buildRules: {
@@ -93,12 +138,7 @@ function buildGenerationMessages(request, analysis, architecture, helpers) {
   return [
     {
       role: 'system',
-      content: [
-        'You are an expert Minecraft mod developer.',
-        'Build the final response the way ChatGPT would: consume tokenized intent, use the semantic map, predict the most likely next implementation steps, then iteratively complete a full mod.',
-        'Return ONLY a valid JSON object containing the complete project files.',
-        'No markdown. No code fences. No explanations.',
-      ].join(' '),
+      content: 'You are an expert Minecraft mod developer. Build the final response containing complete project files. Return ONLY a valid JSON object.'
     },
     {
       role: 'user',
@@ -111,7 +151,7 @@ function buildRepairMessages(request, architecture, previousResponse, validation
   return [
     {
       role: 'system',
-      content: 'Repair the generated Minecraft mod JSON. Return ONLY valid JSON. Keep the project complete and compilable.',
+      content: 'Repair the generated Minecraft mod JSON. Return ONLY valid JSON. Keep the project complete and compilable.'
     },
     {
       role: 'user',
@@ -134,19 +174,19 @@ function extractJSON(text) {
   try {
     return JSON.parse(text.trim());
   } catch {}
-
+  
+  // Fallback just in case, though Groq's response_format prevents this
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start !== -1 && end !== -1) {
-    try {
-      return JSON.parse(text.slice(start, end + 1));
-    } catch {}
+    try { return JSON.parse(text.slice(start, end + 1)); } catch {}
   }
-
-  const stripped = text.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
-  return JSON.parse(stripped);
+  throw new Error('Failed to parse JSON from AI response');
 }
 
+// ==========================================
+// MAIN PIPELINE FUNCTIONS
+// ==========================================
 async function buildResponsePlan(request, helpers, emit) {
   const analysis = {
     tokenization: tokenizePrompt(request.description),
@@ -156,11 +196,10 @@ async function buildResponsePlan(request, helpers, emit) {
   emit('pipeline', `Tokenized prompt into ~${analysis.tokenization.approximateTokenCount} tokens`);
   emit('pipeline', `Mapped semantic intent: ${analysis.vectorization.inferredIntent}`);
 
-  const architectureResult = await callOpenRouter({
+  const architectureResult = await callGroq({
     messages: buildArchitectureMessages(request, analysis, helpers),
     maxTokens: 3000,
     temperature: 0.2,
-    reasoningEffort: request.thinkingLevel,
   });
 
   const architecture = extractJSON(architectureResult.content);
@@ -174,12 +213,10 @@ async function buildResponsePlan(request, helpers, emit) {
 }
 
 async function generateProjectFromPlan(request, plan, helpers, emit, validateMod) {
-  const generationResult = await callOpenRouter({
+  const generationResult = await callGroq({
     messages: buildGenerationMessages(request, plan.analysis, plan.architecture, helpers),
-    maxTokens: helpers.maxTokens,
-    temperature: helpers.temperature,
-    preferredModel: helpers.preferredModel,
-    reasoningEffort: request.thinkingLevel,
+    maxTokens: helpers.maxTokens || 8000,
+    temperature: helpers.temperature || 0.2,
   });
 
   emit('pipeline', `Generated project draft with ${generationResult.model}`);
@@ -195,7 +232,8 @@ async function generateProjectFromPlan(request, plan, helpers, emit, validateMod
   } catch (error) {
     emit('pipeline', 'Validation failed, running repair pass');
 
-    const repairResult = await callOpenRouter({
+    // Uses the FAST_MODEL automatically for repairs!
+    const repairResult = await callGroq({
       messages: buildRepairMessages(
         request,
         plan.architecture,
@@ -203,10 +241,9 @@ async function generateProjectFromPlan(request, plan, helpers, emit, validateMod
         error.message,
         helpers
       ),
-      maxTokens: helpers.maxTokens,
+      maxTokens: helpers.maxTokens || 8000,
       temperature: 0.15,
-      preferredModel: helpers.fallbackModel || helpers.preferredModel,
-      reasoningEffort: request.thinkingLevel,
+      isRepair: true, 
     });
 
     const parsed = extractJSON(repairResult.content);
