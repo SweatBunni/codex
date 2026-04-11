@@ -106,10 +106,14 @@ function getGradleVersion(mcVersion, loader) {
 
 function getFabricLoom(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  if (minor >= 21) return '1.6.1';   // Verified stable for 1.21
-  if (minor >= 20) return '1.5.8';   // Verified stable for 1.20.x
-  if (minor >= 18) return '0.12.12'; // Verified stable for 1.18/1.19
-  return '0.10';                     // Verified stable for 1.16 and below
+
+  // Modern Fabric (2025+)
+  if (minor >= 21) return '1.7.3';   // ✅ FIXED (was 1.6.1)
+  if (minor >= 20) return '1.7.3';   // ✅ unified modern version
+
+  // Older support (only if you REALLY need it)
+  if (minor >= 18) return '1.5-SNAPSHOT';
+  return '0.12.12';
 }
 
 function getFabricLoomPluginId(mcVersion) {
