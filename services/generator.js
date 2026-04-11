@@ -252,8 +252,22 @@ async function fixGradle(workDir) {
 
   let g = await fs.readFile(file, 'utf8');
 
+  // Fix: Ensure proper formatting - decompress single-line Gradle syntax
+  // Convert patterns like "plugins{id...}" to multi-line format
+  g = g.replace(/plugins\s*\{\s*id\s+/g, 'plugins {\n  id ');
+  g = g.replace(/repositories\s*\{\s*/g, '\n}\n\nrepositories {\n  ');
+  g = g.replace(/dependencies\s*\{\s*/g, '\n}\n\ndependencies {\n  ');
+  
+  // Add newlines before closing braces where missing
+  g = g.replace(/;/g, '\n  ');
+  
+  // Ensure file ends with closing brace
+  if (!g.trim().endsWith('}')) {
+    g = g + '\n}';
+  }
+
   if (!g.includes('mavenCentral')) {
-    g = 'repositories { mavenCentral() }\n' + g;
+    g = 'repositories {\n  mavenCentral()\n  maven {\n    url = "https://maven.fabricmc.net/"\n  }\n}\n' + g;
   }
 
   // Fix: Remove pluginManagement from build.gradle if present (it belongs in settings.gradle)
@@ -527,11 +541,11 @@ Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
   "packageName": "com.example.examplemod",
   "mcVersion": "${mcVersion}",
   "files": {
-    "settings.gradle": "pluginManagement{repositories{maven{name='Fabric';url='https://maven.fabricmc.net/'}gradlePluginPortal()}}\\nrootProject.name='example-mod'",
-    "build.gradle": "plugins{id 'fabric-loom' version '${loomVer}'}repositories{mavenCentral();maven{url='https://maven.fabricmc.net/'}}dependencies{minecraft 'com.mojang:minecraft:${mcVersion}';mappings loom.officialMojangMappings();modImplementation 'net.fabricmc:fabric-loader:0.15.11'}",
+    "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven {\\n      name = 'Fabric'\\n      url = 'https://maven.fabricmc.net/'\\n    }\\n    gradlePluginPortal()\\n  }\\n}\\n\\nrootProject.name = 'example-mod'",
+    "build.gradle": "plugins {\\n  id 'fabric-loom' version '${loomVer}'\\n  id 'maven-publish'\\n}\\n\\nrepositories {\\n  mavenCentral()\\n  maven {\\n    url = 'https://maven.fabricmc.net/'\\n  }\\n}\\n\\ndependencies {\\n  minecraft 'com.mojang:minecraft:${mcVersion}'\\n  mappings loom.officialMojangMappings()\\n  modImplementation 'net.fabricmc:fabric-loader:0.15.11'\\n}",
     "gradle.properties": "org.gradle.jvmargs=-Xmx1G",
     "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\":1,\\"id\\":\\"example-mod\\",\\"version\\":\\"1.0.0\\",\\"name\\":\\"ExampleMod\\",\\"description\\":\\"A mod\\",\\"environment\\":\\"*\\",\\"entrypoints\\":{\\"main\\":[\\"com.example.examplemod.ExampleMod\\"]},\\"mixins\\":[],\\"depends\\":{\\"fabricloader\\":\\">=0.14.0\\",\\"minecraft\\":\\"${mcVersion}\\",\\"java\\":\\">=17\\"}}",
-    "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;import net.fabricmc.api.ModInitializer;public class ExampleMod implements ModInitializer{public void onInitialize(){}}"
+    "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;\\n\\nimport net.fabricmc.api.ModInitializer;\\n\\npublic class ExampleMod implements ModInitializer {\\n  @Override\\n  public void onInitialize() {\\n  }\\n}"
   }
 }`;
 }
