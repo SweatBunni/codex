@@ -13,7 +13,7 @@ const { logger } = require('../utils/logger');
 const { buildResponsePlan, generateProjectFromPlan } = require('./responsePipeline');
 
 const WORKSPACE_DIR = path.resolve(config.workspace.dir);
-const MAX_AUTO_FIX_RETRIES = 2; // Will try to fix the build up to 2 times automatically
+const MAX_AUTO_FIX_RETRIES = 2;
 
 // Java Auto-Detection
 const javaCache = {};
@@ -95,7 +95,7 @@ function getJavaVersionString(mcVersion) {
 }
 
 // ==========================================
-// CONTEXT LOADER (Reads previous chat/job)
+// CONTEXT LOADER
 // ==========================================
 async function loadPreviousJobContext(previousJobId) {
   const prevWorkDir = path.join(WORKSPACE_DIR, previousJobId);
@@ -119,77 +119,69 @@ async function loadPreviousJobContext(previousJobId) {
 }
 
 // ==========================================
-// PROMPT GENERATORS
+// PROMPT GENERATORS (BRUTALLY STRICT)
 // ==========================================
 function buildNewPrompt(req) {
   const { description, loader, mcVersion, loaderVersion } = req;
   const javaMajor = requiredJavaMajor(mcVersion);
   const moduleInstructions = (loader === 'forge' || loader === 'neoforge') ? `\n- Put client-only code in: "src/client/java/com/codexmc/..."\n- Put shared code in: "src/main/java/com/codexmc/..."` : '';
+
   return `You are an expert Minecraft mod developer. Generate a complete, working, multi-file Minecraft mod.
 REQUIREMENTS:
 - Mod description: ${description}
 - Mod loader: ${loader.toUpperCase()} | Minecraft: ${mcVersion} | Loader Version: ${loaderVersion}
 - Java version: ${javaMajor}
  ${moduleInstructions}
+
 CRITICAL RULES:
-1. Output ONLY a valid JSON object - no markdown, no code fences
-2. Split Java code into multiple files - one class per file
-3. DO NOT GENERATE build.gradle, settings.gradle, mods.toml, or fabric.mod.json. The system generates these.
-JSON ESCAPING: Escape backslashes as \\\\ and quotes as \\". Newlines as \\n.
-OUTPUT FORMAT:
+1. Output ONLY a raw JSON object. Absolutely NO markdown, NO \`\`\`json code fences, NO commentary before or after.
+2. Split Java code into multiple files - one class per file.
+3. DO NOT GENERATE build.gradle, settings.gradle, mods.toml, or fabric.mod.json. The system generates these automatically.
+4. The "files" JSON key MUST be an object containing at least one ".java" file.
+5. Escape all backslashes in Java source as \\\\ and double-quotes as \\". Newlines as \\n.
+
+OUTPUT FORMAT - You must output EXACTLY this structure, nothing else:
 {
   "modId": "examplemod",
   "modName": "Example Mod",
   "version": "1.0.0",
   "description": "what the mod does",
   "files": {
-    "src/main/java/com/codexmc/examplemod/ExampleMod.java": "..."
+    "src/main/java/com/codexmc/examplemod/ExampleMod.java": "package com.codexmc.examplemod;\\n\\npublic class ExampleMod {\\n    // code here\\n}"
   }
 }`;
 }
 
 function buildFixPrompt(req, originalContext) {
   const existingFilesString = Object.entries(originalContext.files).map(([p, c]) => `--- ${p} ---\n${c}`).join('\n\n');
+  
   return `You are an expert Minecraft mod developer fixing an EXISTING mod.
 USER REQUEST: "${req.description}"
+
 EXISTING MOD FILES:
  ${existingFilesString}
+
 CRITICAL FIX RULES:
-1. DO NOT GENERATE A BRAND NEW MOD.
-2. Output ONLY a valid JSON object containing the EXACT SAME "modId", "modName", "version", and "description".
-3. In the "files" object, ONLY include files that you actually changed. DO NOT include unchanged files.
-4. If you modify a file, include its COMPLETE new content.
-5. DO NOT output build.gradle, settings.gradle, or metadata files.
-JSON ESCAPING: Escape backslashes as \\\\ and quotes as \\". Newlines as \\n.
-OUTPUT FORMAT:
+1. Output ONLY a raw JSON object. NO markdown, NO \`\`\`json code fences.
+2. DO NOT GENERATE A BRAND NEW MOD.
+3. Output EXACTLY this JSON structure, including the SAME modId, modName, version, and description:
 {
   "modId": "existingmodid",
   "modName": "Existing Mod Name",
   "version": "1.0.0",
   "description": "original description",
-  "files": { "src/main/java/.../File.java": "fixed code here..." }
-}`;
-}
-
-// ==========================================
-// AUTO-FIX ENGINE
-// ==========================================
-function extractCompilerErrors(logOutput) {
-  const errors = [];
-  const lines = logOutput.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].match(/\.java:\d+: error:/)) {
-      errors.push(lines[i]);
-      if (i + 1 < lines.length && (lines[i+1].includes('symbol:') || lines[i+1].includes('location:'))) {
-        errors.push(lines[i+1]);
-      }
-    }
+  "files": {
+    "src/main/java/com/codexmc/examplemod/File.java": "fixed code here..."
   }
-  return errors.join('\n');
+}
+4. In the "files" object, ONLY include files that you actually changed.
+5. Provide the COMPLETE new content for modified files.
+6. DO NOT output build.gradle, settings.gradle, or metadata files.
+7. Escape backslashes as \\\\ and quotes as \\". Newlines as \\n.`;
 }
 
 function buildAutoFixPrompt(request, errorLogs) {
-  return `The Gradle build for this Minecraft mod failed with Java compiler errors. You MUST fix these exact errors. Do not change features or add new files unless absolutely necessary.
+  return `The Gradle build for this Minecraft mod failed with Java compiler errors. You MUST fix these exact errors.
 MINECRAFT VERSION: ${request.mcVersion}
 MOD LOADER: ${request.loader}
 
@@ -197,20 +189,28 @@ BUILD ERRORS:
  ${errorLogs}
 
 CRITICAL RULES:
-1. Output ONLY a valid JSON object.
-2. In the "files" object, ONLY include files that you modified to fix the errors. Do NOT include unchanged files.
-3. Provide the COMPLETE new content for any modified file.
-4. Ensure all imports actually exist for Minecraft ${request.mcVersion} ${request.loader}.
-5. DO NOT output build.gradle, settings.gradle, or metadata files.
-JSON ESCAPING: Escape backslashes as \\\\ and quotes as \\". Newlines as \\n.
-OUTPUT FORMAT:
+1. Output ONLY a raw JSON object. NO markdown, NO \`\`\`json code fences.
+2. You MUST include the exact keys "modId", "modName", "version", "description", and "files" in your JSON.
+3. In the "files" object, ONLY include files that you modified to fix the errors. Do NOT include unchanged files.
+4. Provide the COMPLETE new content for any modified file.
+5. Ensure all imports actually exist for Minecraft ${request.mcVersion} ${request.loader}.
+6. DO NOT output build.gradle, settings.gradle, or metadata files.
+
+OUTPUT FORMAT - You must output EXACTLY this structure, nothing else:
 {
+  "modId": "autofixmod",
+  "modName": "Auto Fix Mod",
+  "version": "1.0.0",
+  "description": "auto fix",
   "files": {
     "src/main/java/com/codexmc/examplemod/BrokenFile.java": "fixed code here..."
   }
 }`;
 }
 
+// ==========================================
+// FILE & BUILD HELPERS
+// ==========================================
 function normalizeFileContent(relPath, content) {
   if (typeof content !== 'string') return String(content ?? '');
   const isSerializedWholeFile = !content.includes('\n') && /\\n|\\r\\n|\\"|\\t/.test(content);
@@ -272,10 +272,13 @@ function validateMod(mod) {
   if (!mod.modId || typeof mod.modId !== 'string') throw new Error('Missing modId');
   if (!mod.files || typeof mod.files !== 'object') throw new Error('Missing files');
   const javaFiles = Object.keys(mod.files).filter(f => f.endsWith('.java'));
-  if (javaFiles.length === 0) throw new Error('No Java files generated');
+  if (javaFiles.length === 0) throw new Error('Missing files');
   return { javaFileCount: javaFiles.length };
 }
 
+// ==========================================
+// DEPENDENCY AUTO-MATCHING ENGINE
+// ==========================================
 function injectDynamicDependencies(buildGradle, loader, mcVersion, files) {
   let modifiedGradle = buildGradle;
   const neededRepos = new Set(); const neededDeps = new Set();
@@ -301,25 +304,169 @@ function injectDynamicDependencies(buildGradle, loader, mcVersion, files) {
 // BUILD GENERATION SYSTEM
 // ==========================================
 function buildFabricSettingsGradle(rootName) {
-  return `pluginManagement {\n    repositories {\n        maven {\n            name = 'Fabric'\n            url = 'https://maven.fabricmc.net/'\n        }\n        mavenCentral()\n        gradlePluginPortal()\n    }\n}\n\nrootProject.name = '${rootName}'`;
+  return `pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
 }
+
+rootProject.name = '${rootName}'`;
+}
+
 function buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion }) {
   const javaMajor = requiredJavaMajor(mcVersion);
-  return `plugins {\n    id 'fabric-loom' version '${getFabricLoom(mcVersion)}'\n    id 'maven-publish'\n}\nversion = '${version}'\ngroup = 'com.codexmc'\nbase { archivesName = '${modId}' }\nrepositories { mavenCentral() }\ndependencies {\n    minecraft "com.mojang:minecraft:${mcVersion}"\n    mappings loom.layered() { officialMojangMappings() }\n    modImplementation "net.fabricmc:fabric-loader:${loaderVersion || '0.15.11'}"\n    modImplementation "net.fabricmc.fabric-api:fabric-api:${getFabricApi(mcVersion)}"\n}\nprocessResources { inputs.property "version", project.version; filesMatching("fabric.mod.json") { expand "version": inputs.properties.version } }\ntasks.withType(JavaCompile).configureEach { it.options.release = ${javaMajor} }\njava { toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }; withSourcesJar(); sourceCompatibility = ${getJavaVersionString(mcVersion)}; targetCompatibility = ${getJavaVersionString(mcVersion)} }\npublishing { publications { mavenJava(MavenPublication) { from components.java } } }`;
+  return `plugins {
+    id 'fabric-loom' version '${getFabricLoom(mcVersion)}'
+    id 'maven-publish'
 }
+
+version = '${version}'
+group = 'com.codexmc'
+
+base { archivesName = '${modId}' }
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${mcVersion}"
+    mappings loom.layered() { officialMojangMappings() }
+    modImplementation "net.fabricmc:fabric-loader:${loaderVersion || '0.15.11'}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${getFabricApi(mcVersion)}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") { expand "version": inputs.properties.version }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = ${javaMajor} }
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }
+    withSourcesJar()
+    sourceCompatibility = ${getJavaVersionString(mcVersion)}
+    targetCompatibility = ${getJavaVersionString(mcVersion)}
+}
+
+publishing {
+    publications { mavenJava(MavenPublication) { from components.java } }
+}`;
+}
+
 function buildForgeSettingsGradle(rootName) {
-  return `pluginManagement {\n    repositories {\n        gradlePluginPortal()\n        maven { url = 'https://maven.minecraftforge.net/' }\n    }\n}\n\nrootProject.name = '${rootName}'`;
+  return `pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = 'https://maven.minecraftforge.net/'
+        }
+    }
 }
+
+rootProject.name = '${rootName}'`;
+}
+
 function buildForgeBuildGradle({ modId, version, mcVersion, loaderVersion }) {
   const javaMajor = requiredJavaMajor(mcVersion);
-  return `plugins { id 'net.minecraftforge.gradle' version '[6.0,6.2)' }\nversion = '${version}'\ngroup = 'com.codexmc'\nbase { archivesName = '${modId}' }\nsourceSets { main { resources { srcDirs = ["src/main/resources"] } } client { compileClasspath += main.output; runtimeClasspath += main.output } server { compileClasspath += main.output; runtimeClasspath += main.output } }\njava { toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }; withSourcesJar() }\nminecraft { mappings channel: 'official', version: '${mcVersion}'; copyIdeResources = true; runs { client { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } } server { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } } } }\ndependencies { minecraft "net.minecraftforge:forge:${mcVersion}-${loaderVersion}" }\ntasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }\npublishing { publications { register('mavenJava', MavenPublication) { from components.java } } }`;
+  return `plugins {
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
 }
+
+version = '${version}'
+group = 'com.codexmc'
+
+base { archivesName = '${modId}' }
+
+sourceSets {
+    main { resources { srcDirs = ["src/main/resources"] } }
+    client { compileClasspath += main.output; runtimeClasspath += main.output }
+    server { compileClasspath += main.output; runtimeClasspath += main.output }
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }
+    withSourcesJar()
+}
+
+minecraft {
+    mappings channel: 'official', version: '${mcVersion}'
+    copyIdeResources = true
+    runs {
+        client { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } }
+        server { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } }
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${mcVersion}-${loaderVersion}"
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+publishing {
+    publications { register('mavenJava', MavenPublication) { from components.java } }
+}`;
+}
+
 function buildNeoForgeSettingsGradle(rootName) {
-  return `pluginManagement {\n    repositories {\n        gradlePluginPortal()\n        maven { url = 'https://maven.neoforged.net/releases/' }\n    }\n}\n\nrootProject.name = '${rootName}'`;
+  return `pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = 'https://maven.neoforged.net/releases/'
+        }
+    }
 }
+
+rootProject.name = '${rootName}'`;
+}
+
 function buildNeoForgeBuildGradle({ modId, version, mcVersion, loaderVersion }) {
   const javaMajor = requiredJavaMajor(mcVersion);
-  return `plugins { id 'java-library'; id 'net.neoforged.moddev' version '2.0.28-beta' }\nversion = '${version}'\ngroup = 'com.codexmc'\nbase { archivesName = '${modId}' }\nsourceSets { main { resources { srcDirs = ["src/main/resources"] } } client { compileClasspath += main.output; runtimeClasspath += main.output } server { compileClasspath += main.output; runtimeClasspath += main.output } }\njava { toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }; withSourcesJar() }\nrepositories { mavenLocal() }\nneoForge { version = "${loaderVersion}"; runs { client { client(); systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id } server { server(); programArgument '--nogui'; systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id } }; mods { "${modId}" { sourceSet sourceSets.main } } }\ntasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }\npublishing { publications { register('mavenJava', MavenPublication) { from components.java } } }`;
+  return `plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.28-beta'
+}
+
+version = '${version}'
+group = 'com.codexmc'
+
+base { archivesName = '${modId}' }
+
+sourceSets {
+    main { resources { srcDirs = ["src/main/resources"] } }
+    client { compileClasspath += main.output; runtimeClasspath += main.output }
+    server { compileClasspath += main.output; runtimeClasspath += main.output }
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }
+    withSourcesJar()
+}
+
+repositories { mavenLocal() }
+
+neoForge {
+    version = "${loaderVersion}"
+    runs {
+        client { client(); systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id }
+        server { server(); programArgument '--nogui'; systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id }
+    }
+    mods { "${modId}" { sourceSet sourceSets.main } }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+publishing {
+    publications { register('mavenJava', MavenPublication) { from components.java } }
+}`;
 }
 
 // ==========================================
@@ -333,24 +480,31 @@ function inferEntrypoint(mod, fallbackId, type) {
   const pkg = (file.match(/^src\/(?:main|client|server)\/java\/(.+)\/[^/]+\.java$/) || [])[1]?.replace(/\//g, '.') || `com.codexmc.${fallbackId}`;
   return `${pkg}.${className}`;
 }
+
 function buildFabricModJson({ modId, modName, version, description, entrypoint, javaMajor }) {
   return JSON.stringify({ schemaVersion: 1, id: modId, version, name: modName, description, authors: ['CodexMC'], contact: {}, license: 'All Rights Reserved', environment: '*', entrypoints: { main: [entrypoint] }, depends: { fabricloader: '>=0.15.11', minecraft: '*', java: `>=${javaMajor}`, 'fabric-api': '*' } }, null, 2);
 }
+
 function buildForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion }) {
   const major = (loaderVersion || '47').split('.')[0];
   return `modLoader="javafml"\nloaderVersion="[${major},)"\nlicense="All Rights Reserved"\n\n[[mods]]\nmodId="${modId}"\nversion="${version}"\ndisplayName="${modName}"\ndescription=\'\'\'${description}\'\'\'\n\n[[dependencies.${modId}]]\nmodId="forge"\nmandatory=true\nversionRange="[${major},)"\nordering="NONE"\nside="BOTH"\n\n[[dependencies.${modId}]]\nmodId="minecraft"\nmandatory=true\nversionRange="[${mcVersion},)"\nordering="NONE"\nside="BOTH"`;
 }
+
 function buildNeoForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion }) {
   const parts = (loaderVersion || '20.4.167').split('.');
   return `modLoader="javafml"\nloaderVersion="[4,)"\nlicense="All Rights Reserved"\n\n[[mods]]\nmodId="${modId}"\nversion="${version}"\ndisplayName="${modName}"\ndescription=\'\'\'${description}\'\'\'\n\n[[dependencies.${modId}]]\nmodId="neoforge"\nmandatory=true\nversionRange="[${parts[0]}.${parts[1]},)"\nordering="NONE"\nside="BOTH"\n\n[[dependencies.${modId}]]\nmodId="minecraft"\nmandatory=true\nversionRange="[${mcVersion},)"\nordering="NONE"\nside="BOTH"`;
 }
+
 function buildIDEConfigs(modId) {
   return {
     '.vscode/tasks.json': JSON.stringify({ version: "2.0.0", tasks: [ { label: "Run Client", type: "shell", command: "./gradlew runClient", problemMatcher: [], group: { kind: "build", isDefault: true } }, { label: "Build Mod", type: "shell", command: "./gradlew build", problemMatcher: [] } ] }, null, 2),
     '.idea/runConfigurations/Run_Client.xml': `<?xml version="1.0" encoding="UTF-8"?><component name="ProjectRunConfigurationManager"><configuration default="false" name="Run Client" type="GradleRunConfiguration" factoryName="Gradle"><ExternalSystemSettings><option name="executionName" /><option name="externalProjectPath" value="$PROJECT_DIR$" /><option name="externalSystemIdString" value="GRADLE" /><option name="scriptParameters" value="" /><option name="taskDescriptions"><list /></option><option name="taskNames"><list><option value="runClient" /></list></option><option name="vmOptions" value="" /></ExternalSystemSettings><method v="2" /></configuration></component>`
   };
 }
-function buildDefaultPackMcmeta(description) { return JSON.stringify({ pack: { pack_format: 15, description: description.replace(/"/g, '\\"') } }, null, 2); }
+
+function buildDefaultPackMcmeta(description) { 
+  return JSON.stringify({ pack: { pack_format: 15, description: description.replace(/"/g, '\\"') } }, null, 2); 
+}
 
 // ==========================================
 // MOD NORMALIZER
@@ -364,7 +518,8 @@ function normalizeGeneratedMod(mod, request, originalFiles = null) {
   const mcVersion = request.mcVersion;
   const loaderVersion = request.loaderVersion;
 
-  delete normalized.files['build.gradle.kts']; delete normalized.files['settings.gradle.kts'];
+  delete normalized.files['build.gradle.kts']; 
+  delete normalized.files['settings.gradle.kts'];
   let buildGradle = '';
 
   if (request.loader === 'fabric') {
@@ -372,17 +527,20 @@ function normalizeGeneratedMod(mod, request, originalFiles = null) {
     normalized.files['settings.gradle'] = buildFabricSettingsGradle(modId);
     buildGradle = buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion });
     normalized.files['src/main/resources/fabric.mod.json'] = buildFabricModJson({ modId, modName, version, description, entrypoint, javaMajor: requiredJavaMajor(mcVersion) });
-    delete normalized.files['src/main/resources/META-INF/mods.toml']; delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
+    delete normalized.files['src/main/resources/META-INF/mods.toml']; 
+    delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
   } else if (request.loader === 'forge') {
     normalized.files['settings.gradle'] = buildForgeSettingsGradle(modId);
     buildGradle = buildForgeBuildGradle({ modId, version, mcVersion, loaderVersion });
     normalized.files['src/main/resources/META-INF/mods.toml'] = buildForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion });
-    delete normalized.files['src/main/resources/fabric.mod.json']; delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
+    delete normalized.files['src/main/resources/fabric.mod.json']; 
+    delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
   } else if (request.loader === 'neoforge') {
     normalized.files['settings.gradle'] = buildNeoForgeSettingsGradle(modId);
     buildGradle = buildNeoForgeBuildGradle({ modId, version, mcVersion, loaderVersion });
     normalized.files['src/main/resources/META-INF/neoforge.mods.toml'] = buildNeoForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion });
-    delete normalized.files['src/main/resources/fabric.mod.json']; delete normalized.files['src/main/resources/META-INF/mods.toml'];
+    delete normalized.files['src/main/resources/fabric.mod.json']; 
+    delete normalized.files['src/main/resources/META-INF/mods.toml'];
   }
 
   if (!normalized.files['src/main/resources/pack.mcmeta']) normalized.files['src/main/resources/pack.mcmeta'] = buildDefaultPackMcmeta(description);
@@ -390,6 +548,7 @@ function normalizeGeneratedMod(mod, request, originalFiles = null) {
 
   buildGradle = injectDynamicDependencies(buildGradle, request.loader, mcVersion, normalized.files);
   normalized.files['build.gradle'] = buildGradle;
+  
   const ideConfigs = buildIDEConfigs(modId);
   for (const [p, c] of Object.entries(ideConfigs)) normalized.files[p] = c;
 
@@ -424,10 +583,14 @@ async function generateMod(request, onProgress) {
     }
 
     const helpers = {
-      javaMajor: requiredJavaMajor(request.mcVersion), javaVersionEnum: getJavaVersionString(request.mcVersion),
-      gradleVersion: getGradleVersion(request.mcVersion, request.loader), maxTokens: config.openrouter.maxTokens,
-      temperature: config.openrouter.temperature, preferredModel: config.openrouter.codingPrimaryModel,
-      fallbackModel: config.openrouter.codingFallbackModel, promptFactory,
+      javaMajor: requiredJavaMajor(request.mcVersion), 
+      javaVersionEnum: getJavaVersionString(request.mcVersion),
+      gradleVersion: getGradleVersion(request.mcVersion, request.loader), 
+      maxTokens: config.openrouter.maxTokens,
+      temperature: config.openrouter.temperature, 
+      preferredModel: config.openrouter.codingPrimaryModel,
+      fallbackModel: config.openrouter.codingFallbackModel, 
+      promptFactory,
     };
 
     let mod;
@@ -474,9 +637,12 @@ async function generateMod(request, onProgress) {
       try {
         if (attempt > 0) {
           emit('pipeline', `Auto-fix attempt ${attempt}/${MAX_AUTO_FIX_RETRIES}...`);
-          const errorLogs = extractCompilerErrors(buildError);
+          
+          // Extract specific java compiler errors from the massive log
+          const errorLogs = buildError.split('\n').filter(l => l.includes('.java:') && l.includes('error:')).join('\n');
+          
           if (!errorLogs) {
-            emit('warning', 'Build failed with non-fixable Gradle error.');
+            emit('warning', 'Build failed with non-fixable Gradle error (e.g. plugin missing).');
             break; 
           }
 
