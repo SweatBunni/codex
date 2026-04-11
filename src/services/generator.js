@@ -83,7 +83,7 @@ function requiredJavaMajor(mcVersion) {
 // We also cap based on what the loader actually needs.
 function getGradleVersion(mcVersion, loader) {
   if (loader === 'fabric') {
-    return '8.8'; // ✅ force stable modern Gradle
+    return '8.8';
   }
 
   const parts = mcVersion.split('.').map(Number);
