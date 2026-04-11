@@ -106,15 +106,25 @@ function getGradleVersion(mcVersion, loader) {
 
 function getFabricLoom(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  if (minor >= 21) return '1.9-SNAPSHOT';
-  if (minor >= 20) return '1.6-SNAPSHOT';
-  if (minor >= 18) return '0.12-SNAPSHOT';
-  return '0.10-SNAPSHOT';
+  if (minor >= 21) return '1.9';
+  if (minor >= 20) return '1.6';
+  if (minor >= 18) return '0.12';
+  return '0.10';
 }
 
 function getFabricApi(mcVersion) {
-  const map = { '1.21': '0.100.0+1.21', '1.20.4': '0.97.0+1.20.4', '1.20.1': '0.92.2+1.20.1', '1.19.4': '0.87.2+1.19.4' };
-  return map[mcVersion] || '0.92.2+1.20.1';
+  const map = {
+    '1.21.11': '0.140.2+1.21.11',
+    '1.21.1': '0.116.9+1.21.1',
+    '1.21': '0.102.0+1.21',
+    '1.20.4': '0.97.0+1.20.4',
+    '1.20.1': '0.92.2+1.20.1',
+    '1.19.4': '0.87.2+1.19.4',
+  };
+
+  if (map[mcVersion]) return map[mcVersion];
+  const fallback = Object.entries(map).find(([version]) => mcVersion.startsWith(version));
+  return fallback ? fallback[1] : '0.92.2+1.20.1';
 }
 
 function getForgeGradleVersion(mcVersion) {
@@ -162,7 +172,8 @@ function buildDependencies(loader, mcVersion, loaderVersion) {
 - fabric-loom: ${getFabricLoom(mcVersion)}
 - fabric-loader: ${loaderVersion || '0.15.11'}
 - fabric-api: ${getFabricApi(mcVersion)}
-- Use FabricMod annotation, use Fabric API events`;
+- Main entrypoint must implement net.fabricmc.api.ModInitializer
+- Use fabric.mod.json metadata and Fabric API events`;
   }
   if (loader === 'neoforge') {
     return `NEOFORGE DEPENDENCIES:
@@ -348,6 +359,165 @@ function validateMod(mod) {
   return { javaFileCount: javaFiles.length };
 }
 
+function buildFabricSettingsGradle(rootName) {
+  return `pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = '${rootName}'`;
+}
+
+function buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion }) {
+  const javaMajor = requiredJavaMajor(mcVersion);
+  const javaVersionEnum = getJavaVersionString(mcVersion);
+
+  return `plugins {
+    id 'fabric-loom' version '${getFabricLoom(mcVersion)}'
+    id 'maven-publish'
+}
+
+version = '${version}'
+group = 'com.codexmc'
+
+base {
+    archivesName = '${modId}'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${mcVersion}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${loaderVersion || '0.15.11'}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${getFabricApi(mcVersion)}"
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = ${javaMajor}
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = ${javaVersionEnum}
+    targetCompatibility = ${javaVersionEnum}
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+
+    repositories {
+    }
+}`;
+}
+
+function inferFabricEntrypoint(mod) {
+  const javaFiles = Object.entries(mod.files).filter(([file]) => file.endsWith('.java'));
+  const preferred = javaFiles.find(([, content]) => /implements\s+ModInitializer\b/.test(content))
+    || javaFiles.find(([, content]) => /\bonInitialize\s*\(/.test(content))
+    || javaFiles.find(([file]) => /src\/main\/java\/com\/codexmc\/[^/]+\/[^/]+\.java$/.test(file))
+    || javaFiles[0];
+
+  if (!preferred) return 'com.codexmc.examplemod.ExampleMod';
+
+  const [file] = preferred;
+  const className = path.basename(file, '.java');
+  const packageMatch = file.match(/^src\/main\/java\/(.+)\/[^/]+\.java$/);
+  const packageName = packageMatch ? packageMatch[1].replace(/\//g, '.') : `com.codexmc.${mod.modId || 'examplemod'}`;
+  return `${packageName}.${className}`;
+}
+
+function buildFabricModJson({ modId, modName, version, description, entrypoint, javaMajor }) {
+  return `${JSON.stringify({
+    schemaVersion: 1,
+    id: modId,
+    version: '${version}',
+    name: modName,
+    description,
+    authors: ['CodexMC'],
+    contact: {},
+    license: 'All Rights Reserved',
+    environment: '*',
+    entrypoints: {
+      main: [entrypoint],
+    },
+    depends: {
+      fabricloader: '>=0.15.11',
+      minecraft: '*',
+      java: `>=${javaMajor}`,
+      'fabric-api': '*',
+    },
+  }, null, 2)}\n`;
+}
+
+function buildDefaultPackMcmeta(description) {
+  return `{
+  "pack": {
+    "pack_format": 15,
+    "description": "${description.replace(/"/g, '\\"')}"
+  }
+}
+`;
+}
+
+function normalizeGeneratedMod(mod, request) {
+  const normalized = {
+    ...mod,
+    files: { ...mod.files },
+  };
+
+  if (request.loader !== 'fabric') return normalized;
+
+  const modId = (normalized.modId || 'examplemod').toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const modName = normalized.modName || modId;
+  const version = normalized.version || '1.0.0';
+  const description = normalized.description || request.description;
+  const entrypoint = inferFabricEntrypoint(normalized);
+
+  normalized.files['settings.gradle'] = buildFabricSettingsGradle(modId);
+  normalized.files['build.gradle'] = buildFabricBuildGradle({
+    modId,
+    version,
+    mcVersion: request.mcVersion,
+    loaderVersion: request.loaderVersion,
+  });
+  normalized.files['src/main/resources/fabric.mod.json'] = buildFabricModJson({
+    modId,
+    modName,
+    version,
+    description,
+    entrypoint,
+    javaMajor: requiredJavaMajor(request.mcVersion),
+  });
+
+  if (!normalized.files['src/main/resources/pack.mcmeta']) {
+    normalized.files['src/main/resources/pack.mcmeta'] = buildDefaultPackMcmeta(description);
+  }
+
+  delete normalized.files['src/main/resources/META-INF/mods.toml'];
+  return normalized;
+}
+
 async function generateMod(request, onProgress) {
   const jobId = uuidv4();
   const workDir = path.join(WORKSPACE_DIR, jobId);
@@ -384,6 +554,7 @@ async function generateMod(request, onProgress) {
       mod = extractJSON(retry);
     }
 
+    mod = normalizeGeneratedMod(mod, request);
     validateMod(mod);
 
     const modId = mod.modId.toLowerCase().replace(/[^a-z0-9]/g, '');
