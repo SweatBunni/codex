@@ -582,14 +582,12 @@ async function generateMod(request, onProgress) {
       promptFactory = (req) => buildNewPrompt(req);
     }
 
-    const helpers = {
+        const helpers = {
       javaMajor: requiredJavaMajor(request.mcVersion), 
       javaVersionEnum: getJavaVersionString(request.mcVersion),
       gradleVersion: getGradleVersion(request.mcVersion, request.loader), 
-      maxTokens: config.openrouter.maxTokens,
-      temperature: config.openrouter.temperature, 
-      preferredModel: config.openrouter.codingPrimaryModel,
-      fallbackModel: config.openrouter.codingFallbackModel, 
+      maxTokens: 8000,             // Hardcoded safe limit for Groq
+      temperature: 0.2,           // Hardcoded for strict JSON
       promptFactory,
     };
 
