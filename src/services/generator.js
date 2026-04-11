@@ -82,32 +82,27 @@ function requiredJavaMajor(mcVersion) {
 // Java 8      -> Gradle 4.x-7.x
 // We also cap based on what the loader actually needs.
 function getGradleVersion(mcVersion, loader) {
-  if (loader === 'fabric') {
-    return '8.8';
-  }
-
   const parts = mcVersion.split('.').map(Number);
   const minor = parts[1] || 0;
 
+  // Fabric (force stable modern)
+  if (loader === 'fabric') {
+    if (minor >= 21) return '8.8';
+    if (minor >= 20) return '8.3';
+    if (minor >= 18) return '7.4.2';
+    return '7.1';
+  }
+
+  // NeoForge
   if (loader === 'neoforge') return '8.8';
+
+  // Forge
   if (minor >= 21) return '8.8';
   if (minor >= 20) return '8.3';
   if (minor >= 18) return '7.4.2';
   if (minor === 17) return '7.1';
+
   return '6.9.4';
-}
-  if (loader === 'fabric') {
-    if (minor >= 21) return '8.8';   // Java 21, loom 1.6
-    if (minor >= 20) return '8.3';   // Java 17, loom 1.6
-    if (minor >= 18) return '7.4.2'; // Java 17
-    return '7.1';                    // Java 8/16
-  }
-  // Forge
-  if (minor >= 21) return '8.8';    // Java 21, ForgeGradle 6
-  if (minor >= 20) return '8.3';    // Java 17, ForgeGradle 6
-  if (minor >= 18) return '7.4.2';  // Java 17, ForgeGradle 5
-  if (minor === 17) return '7.1';   // Java 16
-  return '6.9.4';                   // Java 8, older Forge
 }
 
 function getFabricLoom(mcVersion) {
