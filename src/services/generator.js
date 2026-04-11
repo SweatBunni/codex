@@ -218,7 +218,7 @@ async function writeGradleWrapper(workDir, mcVersion, loader) {
   const gradlew = `#!/bin/sh\nAPP_HOME="$(cd "$(dirname "$0")" && pwd)"\nexec "${process.env.JAVA_HOME || 'java'}" -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"\n`;
   await fs.writeFile(path.join(workDir, 'gradlew'), gradlew, { mode: 0o755 });
 
-  const localJar = '/srv/codex/gradletmp/gradle/wrapper/gradle-wrapper.jar';
+  const localJar = '/srv/codex/gradle/wrapper/gradle-wrapper.jar';
   if (await fs.pathExists(localJar)) {
     await fs.copy(localJar, path.join(gradleDir, 'gradle-wrapper.jar'));
   }
