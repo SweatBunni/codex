@@ -106,9 +106,9 @@ function getGradleVersion(mcVersion, loader) {
 
 function getFabricLoom(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  if (minor >= 21) return '1.9';
-  if (minor >= 20) return '1.6';
-  if (minor >= 18) return '0.12';
+  if (minor >= 21) return '1.9.2';
+  if (minor >= 20) return '1.6.12';
+  if (minor >= 18) return '0.12.12';
   return '0.10';
 }
 
