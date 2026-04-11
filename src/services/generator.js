@@ -113,16 +113,7 @@ function getFabricLoom(mcVersion) {
 }
 
 function getFabricLoomPluginId(mcVersion) {
-  const parts = mcVersion.split('.').map(Number);
-  const major = parts[0] || 1;
-  const minor = parts[1] || 0;
-  const patch = parts[2] || 0;
-
-  if (major > 1 || minor > 21 || (minor === 21 && patch >= 12)) {
-    return 'net.fabricmc.fabric-loom';
-  }
-
-  return 'net.fabricmc.fabric-loom-remap';
+  return 'net.fabricmc.fabric-loom';
 }
 
 function getFabricApi(mcVersion) {
@@ -209,21 +200,20 @@ CRITICAL RULES:
 3. Use correct package structure: com.codexmc.<modid>
 4. Use proper ${loaderUpper} ${mcVersion} APIs - no deprecated methods
 5. ALWAYS split Java code into multiple files - one class per file, NO exceptions
-6. Each Java class MUST be its own separate .java file - main mod class, items, blocks, events, registry
+6. Each Java class MUST be its own separate .java file
 7. Never put multiple top-level classes in a single Java file
 8. Include ALL required files for a compilable mod
 9. The mod must fully implement the described feature
 10. In build.gradle set: sourceCompatibility = ${javaVersionEnum} and targetCompatibility = ${javaVersionEnum}
 11. Do NOT use Java features newer than Java ${javaMajor} (no records, sealed classes, etc. unless Java ${javaMajor} supports them)
+12. Include ONLY files directly required by the request. Do not add placeholder items, example blocks, example configs, or template systems unless the request needs them.
+13. Do not generate files with names like ExampleItem, ExampleBlock, Test, Placeholder, Sample, Demo, or unused registries.
 
-MANDATORY MULTI-FILE JAVA STRUCTURE:
+REQUIRED MULTI-FILE JAVA STRUCTURE:
 - src/main/java/com/codexmc/<modid>/<ModId>Mod.java  (main entry point only)
-- src/main/java/com/codexmc/<modid>/init/ModItems.java (item DeferredRegister)
-- src/main/java/com/codexmc/<modid>/init/ModBlocks.java (block DeferredRegister)
-- src/main/java/com/codexmc/<modid>/item/<ItemName>.java (one file per item class)
-- src/main/java/com/codexmc/<modid>/block/<BlockName>.java (one file per block class)
-- src/main/java/com/codexmc/<modid>/event/<HandlerName>.java (one file per event handler)
-Add more files as the feature requires.
+- Add registries, handlers, worldgen, config, mixins, data files, or helper classes only when the described feature requires them.
+- If the request is terrain/world generation focused, prefer worldgen classes and data files, not item/block boilerplate.
+- If the request does not mention items or blocks, do not generate item/block classes or registries.
 
 ${depBlock}
 
@@ -240,15 +230,36 @@ OUTPUT FORMAT - output ONLY this JSON, nothing before or after:
   "version": "1.0.0",
   "description": "what the mod does",
   "files": {
-    "src/main/java/com/codexmc/examplemod/ExampleMod.java": "package com.codexmc.examplemod;\\n\\nimport ...\\n\\n@Mod(\\"examplemod\\")\\npublic class ExampleMod { ... }",
-    "src/main/java/com/codexmc/examplemod/init/ModItems.java": "package com.codexmc.examplemod.init;\\n\\n...",
-    "src/main/java/com/codexmc/examplemod/item/MyItem.java": "package com.codexmc.examplemod.item;\\n\\n...",
+    "src/main/java/com/codexmc/examplemod/ExampleMod.java": "package com.codexmc.examplemod;\\n\\nimport ...\\n\\npublic class ExampleMod { ... }",
+    "src/main/java/com/codexmc/examplemod/worldgen/TerrainNoiseRouter.java": "package com.codexmc.examplemod.worldgen;\\n\\n...",
     "build.gradle": "...",
     "settings.gradle": "...",
-    "src/main/resources/META-INF/mods.toml": "...",
-    "src/main/resources/pack.mcmeta": "..."
+    "src/main/resources/fabric.mod.json": "...",
+    "src/main/resources/pack.mcmeta": "...",
+    "src/main/resources/data/examplemod/worldgen/...": "..."
   }
 }`;
+}
+
+function normalizeFileContent(relPath, content) {
+  if (typeof content !== 'string') return String(content ?? '');
+
+  const isSerializedWholeFile =
+    !content.includes('\n') &&
+    /\\n|\\r\\n|\\"|\\t/.test(content);
+
+  let normalized = content;
+
+  if (isSerializedWholeFile) {
+    normalized = normalized
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+  }
+
+  return normalized;
 }
 
 async function writeGradleWrapper(workDir, mcVersion, loader) {
@@ -334,13 +345,26 @@ async function findJar(workDir) {
   return jar ? path.join(buildLibs, jar) : null;
 }
 
-function validateMod(mod) {
+function validateMod(mod, request = {}) {
   if (!mod.modId || typeof mod.modId !== 'string') throw new Error('Missing modId');
   if (!mod.files || typeof mod.files !== 'object') throw new Error('Missing files');
   if (Object.keys(mod.files).length === 0) throw new Error('No files generated');
   const javaFiles = Object.keys(mod.files).filter(f => f.endsWith('.java'));
   if (javaFiles.length === 0) throw new Error('No Java files generated');
   if (!Object.keys(mod.files).some(f => f === 'build.gradle' || f === 'build.gradle.kts')) throw new Error('No build.gradle generated');
+  const forbiddenPlaceholders = /(example|placeholder|sample|demo|test)/i;
+  const placeholderFile = Object.keys(mod.files).find(file => forbiddenPlaceholders.test(path.basename(file)));
+  if (placeholderFile) throw new Error(`Generated placeholder file not allowed: ${placeholderFile}`);
+
+  const prompt = (request.description || '').toLowerCase();
+  const terrainFocused = /(terrain|mountain|valley|river|worldgen|world generation|noise)/.test(prompt);
+  const mentionsItems = /\bitem|weapon|sword|tool|armor|block\b/.test(prompt);
+  if (terrainFocused && !mentionsItems) {
+    const unrelatedGameplayFile = Object.keys(mod.files).find(file => /\/(item|block)\//.test(file) || /ModItems|ModBlocks/.test(file));
+    if (unrelatedGameplayFile) {
+      throw new Error(`Terrain-focused request should not include unrelated item/block boilerplate: ${unrelatedGameplayFile}`);
+    }
+  }
   // Log how many Java files were generated
   return { javaFileCount: javaFiles.length };
 }
@@ -501,6 +525,8 @@ function normalizeGeneratedMod(mod, request) {
   }
 
   delete normalized.files['src/main/resources/META-INF/mods.toml'];
+  delete normalized.files['build.gradle.kts'];
+  delete normalized.files['settings.gradle.kts'];
   return normalized;
 }
 
@@ -536,7 +562,8 @@ async function generateMod(request, onProgress) {
     emit('pipeline', 'Stage 2/4: architecture prediction complete');
     emit('pipeline', 'Stage 3/4: iterative code generation');
 
-    const generation = await generateProjectFromPlan(request, plan, helpers, emit, validateMod);
+    const validateGeneratedMod = (mod) => validateMod(mod, request);
+    const generation = await generateProjectFromPlan(request, plan, helpers, emit, validateGeneratedMod);
     let mod = generation.mod;
     emit('ai', `Model selected: ${generation.modelUsed}`);
     if (generation.repaired) {
@@ -546,7 +573,7 @@ async function generateMod(request, onProgress) {
     }
 
     mod = normalizeGeneratedMod(mod, request);
-    validateMod(mod);
+    validateMod(mod, request);
 
     const modId = mod.modId.toLowerCase().replace(/[^a-z0-9]/g, '');
     const javaFiles = Object.keys(mod.files).filter(f => f.endsWith('.java'));
@@ -556,7 +583,7 @@ async function generateMod(request, onProgress) {
     for (const [relPath, content] of Object.entries(mod.files)) {
       const fullPath = path.join(workDir, relPath);
       await fs.ensureDir(path.dirname(fullPath));
-      await fs.writeFile(fullPath, content, 'utf8');
+      await fs.writeFile(fullPath, normalizeFileContent(relPath, content), 'utf8');
       emit('file', relPath);
     }
 
