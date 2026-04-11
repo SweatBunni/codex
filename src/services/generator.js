@@ -106,10 +106,10 @@ function getGradleVersion(mcVersion, loader) {
 
 function getFabricLoom(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  if (minor >= 21) return '1.7-SNAPSHOT'; // Fixed: 1.9.2 doesn't exist
-  if (minor >= 20) return '1.6.12';
-  if (minor >= 18) return '0.12.12';
-  return '0.10';
+  if (minor >= 21) return '1.6.1';   // Verified stable for 1.21
+  if (minor >= 20) return '1.5.8';   // Verified stable for 1.20.x
+  if (minor >= 18) return '0.12.12'; // Verified stable for 1.18/1.19
+  return '0.10';                     // Verified stable for 1.16 and below
 }
 
 function getFabricLoomPluginId(mcVersion) {
