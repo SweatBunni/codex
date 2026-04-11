@@ -223,6 +223,29 @@ async function retry(fn, times = 2) {
   throw last;
 }
 
+/**
+ * Extracts compile errors from build output.
+ * Returns array of error objects with file, line, message.
+ */
+function parseCompileErrors(buildOutput) {
+  const errors = [];
+  const lines = buildOutput.split('\n');
+  
+  for (const line of lines) {
+    // Match: /path/to/File.java:10: error: message
+    const match = line.match(/(.+?\.java):(\d+):\s+error:\s+(.+)/);
+    if (match) {
+      errors.push({
+        file: match[1],
+        line: parseInt(match[2]),
+        message: match[3]
+      });
+    }
+  }
+  
+  return errors;
+}
+
 // ─────────────────────────────────────────────
 // AUTO FIX SYSTEMS
 // ─────────────────────────────────────────────
@@ -710,6 +733,7 @@ java -jar "%DIR%gradle\\wrapper\\gradle-wrapper.jar" %*
 function buildMod(workDir, mcVersion, emit) {
   return new Promise((resolve, reject) => {
     const javaMajor = requiredJavaMajor(mcVersion);
+    const buildOutput = [];
 
     let javaHome;
     try {
@@ -749,17 +773,29 @@ function buildMod(workDir, mcVersion, emit) {
       },
     });
 
-    proc.stdout.on('data', d =>
-      d.toString().split('\n').forEach(l => l.trim() && emit('build', l))
-    );
+    proc.stdout.on('data', d => {
+      const lines = d.toString().split('\n');
+      lines.forEach(l => {
+        if (l.trim()) {
+          emit('build', l);
+          buildOutput.push(l);
+        }
+      });
+    });
 
-    proc.stderr.on('data', d =>
-      d.toString().split('\n').forEach(l => l.trim() && emit('warn', l))
-    );
+    proc.stderr.on('data', d => {
+      const lines = d.toString().split('\n');
+      lines.forEach(l => {
+        if (l.trim()) {
+          emit('warn', l);
+          buildOutput.push(l);
+        }
+      });
+    });
 
     proc.on('close', code => {
       if (code === 0) resolve();
-      else reject(new Error(`Gradle exited ${code}`));
+      else reject(new Error(buildOutput.join('\n')));
     });
 
     proc.on('error', err =>
@@ -775,6 +811,7 @@ function buildMod(workDir, mcVersion, emit) {
 async function generateMod(request, onProgress) {
   const workId = uuidv4();
   const workDir = path.join(WORKSPACE_DIR, workId);
+  const conversationHistory = [];
 
   function emit(type, msg) {
     if (onProgress) onProgress({ type, message: msg, workId });
@@ -783,11 +820,15 @@ async function generateMod(request, onProgress) {
   await fs.ensureDir(workDir);
   emit('info', 'Starting AI generation...');
 
-  const aiText = await retry(async () => axios.post(OPENROUTER_API, {
+  // Step 1: Initial generation
+  const systemPrompt = buildSystemPrompt(request, request.thinkingLevel);
+  const userPrompt = buildUserPrompt(request);
+  
+  const initialResponse = await retry(async () => axios.post(OPENROUTER_API, {
     model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
     messages: [
-      { role: 'system', content: buildSystemPrompt(request, request.thinkingLevel) },
-      { role: 'user',   content: buildUserPrompt(request) }
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userPrompt }
     ]
   }, {
     headers: {
@@ -796,10 +837,15 @@ async function generateMod(request, onProgress) {
     }
   }));
 
-  const modData = extractJSON(aiText.data.choices[0].message.content);
+  conversationHistory.push({
+    round: 1,
+    userPrompt,
+    aiResponse: initialResponse.data.choices[0].message.content
+  });
+
+  let modData = extractJSON(initialResponse.data.choices[0].message.content);
   validate(modData);
   modData.files = autoFixJava(modData.files);
-
 
   for (const filePath of Object.keys(modData.files)) {
     const fullPath = path.join(workDir, filePath);
@@ -810,11 +856,105 @@ async function generateMod(request, onProgress) {
   await fixGradle(workDir);
   await fixSettings(workDir);
   await writeGradleWrapper(workDir, request.mcVersion);
-  emit('info', 'Building mod...');
-  await retry(() => buildMod(workDir, request.mcVersion, emit));
+  
+  // Step 2: Try to build - if it fails, ask AI to fix errors
+  let buildAttempts = 0;
+  let buildSuccess = false;
+  let lastError = null;
+
+  while (buildAttempts < 3 && !buildSuccess) {
+    buildAttempts++;
+    emit('info', `Building mod (attempt ${buildAttempts}/3)...`);
+    
+    try {
+      await retry(() => buildMod(workDir, request.mcVersion, emit), 0); // Single attempt, no internal retries
+      buildSuccess = true;
+    } catch (err) {
+      lastError = err;
+      const errorMsg = err.message || err.toString();
+      emit('warn', `Build failed: ${errorMsg}`);
+      
+      // Try to extract and parse compile errors
+      const compileErrors = parseCompileErrors(errorMsg);
+      
+      if (compileErrors.length > 0 && buildAttempts < 3) {
+        emit('info', 'Sending compilation errors to AI for fixing...');
+        
+        const errorSummary = compileErrors
+          .slice(0, 5) // First 5 errors
+          .map(e => `${e.file}: ${e.message}`)
+          .join('\n');
+
+        const fixPrompt = `The Minecraft mod build failed with these compilation errors:
+
+${errorSummary}
+
+These are likely due to:
+1. Wrong import statement names for Minecraft classes
+2. Missing or incompatible Fabric API methods
+3. Incorrect package structure
+
+Please regenerate ONLY the Java source files to fix these errors. Keep the Gradle config unchanged.
+Make sure to use imports and APIs that exist in Minecraft ${request.mcVersion} with Fabric Loom ${getFabricLoomVersion(request.mcVersion)}.
+
+Return the corrected files in the same JSON format, with the complete "files" object.`;
+
+        try {
+          const fixResponse = await axios.post(OPENROUTER_API, {
+            model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+              { role: 'assistant', content: initialResponse.data.choices[0].message.content },
+              { role: 'user', content: fixPrompt }
+            ]
+          }, {
+            headers: {
+              Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          conversationHistory.push({
+            round: buildAttempts + 1,
+            errorContext: errorSummary,
+            userPrompt: fixPrompt,
+            aiResponse: fixResponse.data.choices[0].message.content
+          });
+
+          const fixedData = extractJSON(fixResponse.data.choices[0].message.content);
+          
+          // Merge fixed files with existing ones
+          modData.files = { ...modData.files, ...fixedData.files };
+          modData.files = autoFixJava(modData.files);
+
+          // Write updated Java files
+          for (const filePath of Object.keys(modData.files)) {
+            if (filePath.endsWith('.java')) {
+              const fullPath = path.join(workDir, filePath);
+              await fs.ensureDir(path.dirname(fullPath));
+              await fs.writeFile(fullPath, modData.files[filePath]);
+            }
+          }
+        } catch (fixErr) {
+          emit('warn', `Error getting AI fix: ${fixErr.message}`);
+        }
+      } else {
+        break; // Don't retry further if no compile errors found or max attempts reached
+      }
+    }
+  }
+
+  if (!buildSuccess) {
+    throw lastError || new Error('Build failed after multiple attempts');
+  }
 
   const jarPath = path.join(workDir, 'build/libs');
   emit('done', { workId, modName: modData.modName, jarPath });
+
+  // Save conversation history to workspace for reference
+  const historyFile = path.join(workDir, 'ai-conversation-history.json');
+  await fs.writeFile(historyFile, JSON.stringify(conversationHistory, null, 2));
 
   return { success: true, workId };
 }
