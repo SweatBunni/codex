@@ -392,9 +392,11 @@ rootProject.name = '${rootName}'`;
 function buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion }) {
   const javaMajor = requiredJavaMajor(mcVersion);
   const javaVersionEnum = getJavaVersionString(mcVersion);
+  const fabricApi = getFabricApi(mcVersion);
+  const loomVersion = getFabricLoom(mcVersion);
 
   return `plugins {
-    id '${getFabricLoomPluginId(mcVersion)}' version '${getFabricLoom(mcVersion)}'
+    id 'fabric-loom' version '${loomVersion}'
     id 'maven-publish'
 }
 
@@ -406,15 +408,20 @@ base {
 }
 
 repositories {
-    maven { url = 'https://maven.fabricmc.net/' } // ✅ CRITICAL FIX
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.terraformersmc.com/releases/' }
     mavenCentral()
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${mcVersion}"
-    mappings loom.officialMojangMappings()
+
+    mappings loom.layered {
+        officialMojangMappings()
+    }
+
     modImplementation "net.fabricmc:fabric-loader:${loaderVersion || '0.15.11'}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${getFabricApi(mcVersion)}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApi}"
 }
 
 processResources {
@@ -435,6 +442,14 @@ java {
     targetCompatibility = ${javaVersionEnum}
 }
 
+loom {
+    runs {
+        client {
+            ideConfigGenerated = true
+        }
+    }
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -443,7 +458,6 @@ publishing {
     }
 }`;
 }
-
 function inferFabricEntrypoint(mod) {
   const javaFiles = Object.entries(mod.files).filter(([file]) => file.endsWith('.java'));
   const preferred = javaFiles.find(([, content]) => /implements\s+ModInitializer\b/.test(content))
