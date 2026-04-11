@@ -1,7 +1,7 @@
 /**
  * CodexMC Server
  * Express + WebSocket — real-time mod generation
- * Model: deepseek/deepseek-r1:free via OpenRouter
+ * Model: mistral /mistral 7b via OpenRouter
  */
 
 require('dotenv').config();
@@ -185,7 +185,7 @@ app.get('/api/download/:zipName', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    model: 'deepseek/deepseek-r1:free',
+    model: 'mistral /mistral:free',
     activeSessions: activeSessions.size,
     uptime: Math.floor(process.uptime()),
     workspace: WORKSPACE_DIR,
@@ -209,7 +209,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
   console.log(`✅ CodexMC running at http://${HOST}:${PORT}`);
-  console.log(`🤖 Model: deepseek/deepseek-r1:free (via OpenRouter)`);
+  console.log(`🤖 Model: mistral /mistral 7b (via OpenRouter)`);
   console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
 });
 
