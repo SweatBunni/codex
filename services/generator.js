@@ -290,9 +290,9 @@ async function fixSettings(workDir) {
         settings = await fs.readFile(settingsFile, 'utf8');
       }
       
-      // Add pluginManagement at the end if not already present
+      // Add pluginManagement at the START if not already present
       if (!settings.includes('pluginManagement')) {
-        settings = settings + '\n\n' + pluginMgmtMatch[0];
+        settings = pluginMgmtMatch[0] + '\n\n' + settings;
         await fs.writeFile(settingsFile, settings);
       }
 
@@ -306,9 +306,30 @@ async function fixSettings(workDir) {
   if (await fs.pathExists(settingsFile)) {
     let settings = await fs.readFile(settingsFile, 'utf8');
     
-    // Add rootProject.name if missing - MUST be at the start
+    // Add rootProject.name if missing - MUST be AFTER pluginManagement
     if (!settings.includes('rootProject.name')) {
-      settings = "rootProject.name = 'modproject'\n\n" + settings;
+      // Check if pluginManagement exists
+      if (settings.includes('pluginManagement')) {
+        // Add rootProject.name after pluginManagement block
+        settings = settings.replace(
+          /(\bpluginManagement\s*\{[\s\S]*?\})/,
+          '$1\n\nrootProject.name = \'modproject\''
+        );
+      } else {
+        // pluginManagement doesn't exist yet, add both with pluginManagement first
+        const pluginMgmt = `pluginManagement {
+  repositories {
+    maven {
+      name = 'Fabric'
+      url = 'https://maven.fabricmc.net/'
+    }
+    gradlePluginPortal()
+  }
+}
+
+rootProject.name = 'modproject'`;
+        settings = pluginMgmt + '\n\n' + settings;
+      }
     }
     
     // Fix common mistake: Fabric() method instead of proper maven block
@@ -387,9 +408,7 @@ function buildSystemPrompt(request, thinkingLevel) {
     loaderInstructions = `
 CRITICAL FABRIC REQUIREMENTS:
 
-settings.gradle MUST start with rootProject name:
-rootProject.name = 'modname'
-
+settings.gradle MUST start with pluginManagement (FIRST), then rootProject name:
 pluginManagement {
   repositories {
     maven {
@@ -399,6 +418,8 @@ pluginManagement {
     gradlePluginPortal()
   }
 }
+
+rootProject.name = 'modname'
 
 build.gradle MUST start with:
 plugins {
