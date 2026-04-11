@@ -474,31 +474,28 @@ ${cfg.extraSystemNote}
 ${loaderInstructions}
 
 IMPORTANT:
-- Use EXACT plugin versions above. NO other versions or SNAPSHOT unless specified.
-- All files must be COMPLETE and valid Gradle syntax.
-- Include BOTH settings.gradle AND build.gradle (Fabric requires both)
-- settings.gradle MUST start with: rootProject.name = 'modname' on the first line
-- Then settings.gradle must have pluginManagement block with maven repositories
-- build.gradle: MUST have plugins block FIRST, then repositories
-- Do NOT put pluginManagement in build.gradle - it ONLY goes in settings.gradle
-- Do NOT put rootProject.name in build.gradle - it ONLY goes in settings.gradle
-- Gradle syntax: proper indentation, correct { } braces
-- Mod ID: lowercase with hyphens only
-- Java package: com.yourname.modidwithouyhyphens
-- Return COMPLETE file contents with newlines escaped as \\n
+- Use EXACT plugin versions above
+- All files MUST be valid and COMPLETE
+- Include BOTH settings.gradle AND build.gradle
+- settings.gradle: rootProject.name = 'modname' on first line, then pluginManagement
+- build.gradle: plugins first, then repositories, then dependencies
+- Do NOT put pluginManagement in build.gradle (settings.gradle ONLY)
+- Return COMPLETE file contents with proper \\n escapes
+- File content must be valid Gradle/Java/JSON syntax
+- DO NOT include optional comments in file contents
 
-Return ONLY valid JSON (NO markdown, NO code blocks, just raw JSON):
+Return ONLY valid JSON (absolutely no markdown, no code blocks, pure JSON):
 {
   "modName": "ExampleMod",
   "modId": "example-mod",
   "packageName": "com.example.examplemod",
   "mcVersion": "${mcVersion}",
   "files": {
-    "settings.gradle": "rootProject.name = 'example-mod'\\n\\npluginManagement {\\n  repositories {\\n    maven { name = \\"Fabric\\", url = \\"https://maven.fabricmc.net/\\" }\\n    gradlePluginPortal()\\n  }\\n}\\n",
-    "build.gradle": "plugins { id \\"fabric-loom\\", version \\"${loomVer}\\" }\\ngroup = \\"com.example\\"\\nversion = \\"1.0.0\\"\\nrepositories { mavenCentral()\\n  maven { url = \\"https://maven.fabricmc.net/\\" } }\\ndependencies { minecraft \\"com.mojang:minecraft:${mcVersion}\\"\\n  mappings loomMapping()\\n  modImplementation \\"net.fabricmc:fabric-loader:0.15.11\\"\\n}\\n",
-    "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\n",
-    "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\": 1, \\"id\\": \\"example-mod\\", \\"version\\": \\"1.0.0\\", \\"name\\": \\"ExampleMod\\", \\"description\\": \\"A mod\\", \\"environment\\": \\"*\\", \\"entrypoints\\": {\\"main\\": [\\"com.example.examplemod.ExampleMod\\"]}, \\"mixins\\": [], \\"depends\\": {\\"fabricloader\\": \\">=0.14.0\\", \\"minecraft\\": \\"${mcVersion}\\", \\"java\\": \\">=17\\"}}\\n",
-    "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;\\nimport net.fabricmc.api.ModInitializer;\\npublic class ExampleMod implements ModInitializer {\\n  public void onInitialize() { }\\n}\\n"
+    "settings.gradle": "rootProject.name='example-mod'\\npluginManagement{repositories{maven{name='Fabric';url='https://maven.fabricmc.net/'}gradlePluginPortal()}}}",
+    "build.gradle": "plugins{id 'fabric-loom' version '${loomVer}'}repositories{mavenCentral();maven{url='https://maven.fabricmc.net/'}}dependencies{minecraft 'com.mojang:minecraft:${mcVersion}';mappings loom.officialMojangMappings();modImplementation 'net.fabricmc:fabric-loader:0.15.11'}",
+    "gradle.properties": "org.gradle.jvmargs=-Xmx1G",
+    "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\":1,\\"id\\":\\"example-mod\\",\\"version\\":\\"1.0.0\\",\\"name\\":\\"ExampleMod\\",\\"description\\":\\"A mod\\",\\"environment\\":\\"*\\",\\"entrypoints\\":{\\"main\\":[\\"com.example.examplemod.ExampleMod\\"]},\\"mixins\\":[],\\"depends\\":{\\"fabricloader\\":\\">=0.14.0\\",\\"minecraft\\":\\"${mcVersion}\\",\\"java\\":\\">=17\\"}}",
+    "src/main/java/com/example/examplemod/ExampleMod.java": "package com.example.examplemod;import net.fabricmc.api.ModInitializer;public class ExampleMod implements ModInitializer{public void onInitialize(){}}"
   }
 }`;
 }
@@ -530,22 +527,31 @@ function extractJSON(text) {
   try { 
     return JSON.parse(json); 
   } catch (e) {
-    // Try to find and fix common JSON issues
-    // Remove trailing commas before } or ]
-    json = json.replace(/,(\s*[}\]])/g, '$1');
+    // Fix common AI JSON mistakes
+    
+    // 1. Remove trailing commas before } or ]
+    json = json.replace(/,\s*([}\]])/g, '$1');
+    
+    // 2. Fix unquoted property names that are valid (simple identifiers)
+    json = json.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+    
+    // 3. Fix single quotes to double quotes in property names
+    json = json.replace(/'([^']*)'(\s*:)/g, '"$1"$2');
     
     try {
       return JSON.parse(json);
     } catch (e2) {
+      // Try truncating to last complete object
       const last = json.lastIndexOf('}');
-      if (last !== -1) {
+      if (last !== -1 && last > 10) {
         try {
           return JSON.parse(json.slice(0, last + 1));
         } catch (e3) {
-          throw new Error(`Invalid JSON from AI response: ${e.message}\nPosition: ${e.message.match(/position (\d+)/)}`);
+          // Continue to error below
         }
       }
-      throw new Error(`Invalid JSON from AI response: ${e.message}`);
+      
+      throw new Error(`Invalid JSON from AI response: ${e.message}\nTry to find valid JSON in: ${json.slice(0, 200)}...`);
     }
   }
 }
