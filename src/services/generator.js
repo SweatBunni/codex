@@ -58,20 +58,50 @@ function resolveJavaHome(major) {
   return null;
 }
 
+// MC version -> required Java major version
+// Based on official Mojang requirements:
+// 1.21+  -> Java 21
+// 1.18-1.20 -> Java 17
+// 1.17   -> Java 16
+// 1.13-1.16 -> Java 8 (but 11 works)
+// <1.13  -> Java 8
 function requiredJavaMajor(mcVersion) {
-  const [, minor] = mcVersion.split('.').map(Number);
+  const parts = mcVersion.split('.').map(Number);
+  const minor = parts[1] || 0;
+  const patch = parts[2] || 0;
   if (minor >= 21) return 21;
-  if (minor >= 17) return 17;
+  if (minor >= 18) return 17;
+  if (minor === 17) return 16;
   return 8;
 }
 
+// Gradle version must be compatible with the Java version running the build.
+// Java 21 max -> Gradle 8.5+ (8.8 is fine up to Java 21, NOT 22+)
+// Java 17 max -> Gradle 7.3+
+// Java 16     -> Gradle 7.0+
+// Java 8      -> Gradle 4.x-7.x
+// We also cap based on what the loader actually needs.
 function getGradleVersion(mcVersion, loader) {
-  const [, minor] = mcVersion.split('.').map(Number);
-  if (loader === 'fabric') return minor >= 20 ? '8.8' : minor >= 18 ? '7.4.2' : '7.1';
-  if (loader === 'neoforge') return '8.8';
-  if (minor >= 20) return '8.4';
-  if (minor >= 18) return '7.4.2';
-  return '7.1';
+  const parts = mcVersion.split('.').map(Number);
+  const minor = parts[1] || 0;
+  const javaMajor = requiredJavaMajor(mcVersion);
+
+  if (loader === 'neoforge') {
+    // NeoForge only exists for 1.20.2+, requires Gradle 8.x, Java 21
+    return '8.8';
+  }
+  if (loader === 'fabric') {
+    if (minor >= 21) return '8.8';   // Java 21, loom 1.9
+    if (minor >= 20) return '8.3';   // Java 17, loom 1.6
+    if (minor >= 18) return '7.4.2'; // Java 17
+    return '7.1';                    // Java 8/16
+  }
+  // Forge
+  if (minor >= 21) return '8.8';    // Java 21, ForgeGradle 6
+  if (minor >= 20) return '8.3';    // Java 17, ForgeGradle 6
+  if (minor >= 18) return '7.4.2';  // Java 17, ForgeGradle 5
+  if (minor === 17) return '7.1';   // Java 16
+  return '6.9.4';                   // Java 8, older Forge
 }
 
 function getFabricLoom(mcVersion) {
@@ -89,7 +119,18 @@ function getFabricApi(mcVersion) {
 
 function getForgeGradleVersion(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  return minor >= 20 ? '6.0.+' : '5.1.+';
+  if (minor >= 21) return '6.0.+';
+  if (minor >= 20) return '6.0.+';
+  return '5.1.+';
+}
+
+// Returns the Java version string for build.gradle sourceCompatibility
+function getJavaVersionString(mcVersion) {
+  const major = requiredJavaMajor(mcVersion);
+  if (major === 21) return 'JavaVersion.VERSION_21';
+  if (major === 17) return 'JavaVersion.VERSION_17';
+  if (major === 16) return 'JavaVersion.VERSION_16';
+  return 'JavaVersion.VERSION_1_8';
 }
 
 // OpenRouter Client
@@ -139,6 +180,9 @@ function buildPrompt(req) {
   const { description, loader, mcVersion, loaderVersion, thinkingLevel } = req;
   const loaderUpper = loader.toUpperCase();
   const depBlock = buildDependencies(loader, mcVersion, loaderVersion);
+  const javaMajor = requiredJavaMajor(mcVersion);
+  const javaVersionEnum = getJavaVersionString(mcVersion);
+  const gradleVersion = getGradleVersion(mcVersion, loader);
 
   return `You are an expert Minecraft mod developer. Generate a complete, working, multi-file Minecraft mod.
 
@@ -148,10 +192,12 @@ REQUIREMENTS:
 - Minecraft version: ${mcVersion}
 - Loader version: ${loaderVersion}
 - Quality level: ${thinkingLevel}
+- Java version: ${javaMajor} (use ${javaVersionEnum} in build.gradle)
+- Gradle version: ${gradleVersion}
 
 CRITICAL RULES:
 1. Output ONLY a valid JSON object - no markdown, no code fences, no commentary before or after
-2. All Java files must be syntactically valid and compile cleanly
+2. All Java files must be syntactically valid and compile cleanly with Java ${javaMajor}
 3. Use correct package structure: com.codexmc.<modid>
 4. Use proper ${loaderUpper} ${mcVersion} APIs - no deprecated methods
 5. ALWAYS split Java code into multiple files - one class per file, NO exceptions
@@ -159,6 +205,8 @@ CRITICAL RULES:
 7. Never put multiple top-level classes in a single Java file
 8. Include ALL required files for a compilable mod
 9. The mod must fully implement the described feature
+10. In build.gradle set: sourceCompatibility = ${javaVersionEnum} and targetCompatibility = ${javaVersionEnum}
+11. Do NOT use Java features newer than Java ${javaMajor} (no records, sealed classes, etc. unless Java ${javaMajor} supports them)
 
 MANDATORY MULTI-FILE JAVA STRUCTURE:
 - src/main/java/com/codexmc/<modid>/<ModId>Mod.java  (main entry point only)
@@ -208,6 +256,10 @@ function extractJSON(text) {
 
 async function writeGradleWrapper(workDir, mcVersion, loader) {
   const gradleVersion = getGradleVersion(mcVersion, loader);
+  const javaMajor = requiredJavaMajor(mcVersion);
+  const javaHome = resolveJavaHome(javaMajor) || process.env.JAVA_HOME || '';
+  const javaExec = javaHome ? path.join(javaHome, 'bin', 'java') : 'java';
+
   const gradleDir = path.join(workDir, 'gradle', 'wrapper');
   await fs.ensureDir(gradleDir);
 
@@ -215,7 +267,8 @@ async function writeGradleWrapper(workDir, mcVersion, loader) {
     `distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-${gradleVersion}-bin.zip\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n`
   );
 
-  const gradlew = `#!/bin/sh\nAPP_HOME="$(cd "$(dirname "$0")" && pwd)"\nexec "${process.env.JAVA_HOME || 'java'}" -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"\n`;
+  // Hardcode the correct java binary so gradlew always uses the right JDK
+  const gradlew = `#!/bin/sh\nAPP_HOME="$(cd "$(dirname "$0")" && pwd)"\nexec "${javaExec}" -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"\n`;
   await fs.writeFile(path.join(workDir, 'gradlew'), gradlew, { mode: 0o755 });
 
   const localJar = '/srv/codex/gradle/wrapper/gradle-wrapper.jar';
@@ -229,12 +282,23 @@ function buildMod(workDir, mcVersion, loader, emit) {
     const javaMajor = requiredJavaMajor(mcVersion);
     const javaHome = resolveJavaHome(javaMajor);
     const env = { ...process.env };
-    if (javaHome) env.JAVA_HOME = javaHome;
+
+    if (javaHome) {
+      env.JAVA_HOME = javaHome;
+      // Prepend the correct JDK bin to PATH so Gradle's own toolchain detection
+      // can't accidentally pick up the system Java (e.g. Java 25)
+      env.PATH = path.join(javaHome, 'bin') + path.delimiter + (env.PATH || '');
+    }
+
+    // Tell Gradle explicitly which JVM to use for the build daemon
+    if (javaHome) {
+      env.GRADLE_OPTS = `-Dorg.gradle.java.home=${javaHome}`;
+    }
 
     const gradlew = path.join(workDir, 'gradlew');
     const cmd = fs.existsSync(gradlew) ? gradlew : 'gradle';
 
-    emit('build', `Building with Java ${javaMajor}...`);
+    emit('build', `Building with Java ${javaMajor} + Gradle ${getGradleVersion(mcVersion, loader)}...`);
 
     const proc = spawn(cmd, ['build', '--no-daemon', '--stacktrace'], { cwd: workDir, env, stdio: 'pipe' });
     let output = '';
