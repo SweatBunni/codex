@@ -91,7 +91,7 @@ function getGradleVersion(mcVersion, loader) {
     return '8.8';
   }
   if (loader === 'fabric') {
-    if (minor >= 21) return '8.8';   // Java 21, loom 1.9
+    if (minor >= 21) return '8.8';   // Java 21, loom 1.7
     if (minor >= 20) return '8.3';   // Java 17, loom 1.6
     if (minor >= 18) return '7.4.2'; // Java 17
     return '7.1';                    // Java 8/16
@@ -106,7 +106,7 @@ function getGradleVersion(mcVersion, loader) {
 
 function getFabricLoom(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  if (minor >= 21) return '1.9.2';
+  if (minor >= 21) return '1.7-SNAPSHOT'; // Fixed: 1.9.2 doesn't exist
   if (minor >= 20) return '1.6.12';
   if (minor >= 18) return '0.12.12';
   return '0.10';
