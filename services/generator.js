@@ -456,19 +456,19 @@ function validate(mod) {
 
 const THINKING_CONFIGS = {
   low: {
-    model: 'mistral-7b-instruct-v0.3',
+    model: 'mistral-small-latest',
     max_tokens: 4000,
     temperature: 0.3,
     extraSystemNote: 'Be concise. Generate only required files.',
   },
   medium: {
-    model: 'mistral-7b-instruct-v0.3',
+    model: 'mistral-medium-latest',
     max_tokens: 8000,
     temperature: 0.25,
     extraSystemNote: 'Include proper mod structure and registration.',
   },
   high: {
-    model: 'mistral-large',
+    model: 'mistral-large-latest',
     max_tokens: 16000,
     temperature: 0.2,
     extraSystemNote: 'Deep production-grade Minecraft mod with full correctness.',
