@@ -332,6 +332,7 @@ function toggleSidebar() {
 function newMod() {
   currentChatId = null;
   currentJobId = null;
+  previousJobId = null;
   currentLogEl = null;
   isGenerating = false;
   document.getElementById('send-btn').disabled = false;
