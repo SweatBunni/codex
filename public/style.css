@@ -101,14 +101,21 @@ body {
 }
 
 .hero-h1 {
-  font-size: clamp(42px, 7vw, 72px);
+  font-size: clamp(40px, 6.2vw, 64px);
   font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  max-width: 9.5ch;
+  margin-left: auto;
+  margin-right: auto;
+  text-wrap: balance;
   margin-bottom: 24px;
 }
 
-.hero-accent { color: var(--accent); }
+.hero-accent {
+  color: var(--accent);
+  display: inline-block;
+}
 
 .hero-sub {
   font-size: 18px; color: var(--text-2); line-height: 1.7;
@@ -731,6 +738,7 @@ kbd {
 @media (max-width: 768px) {
   .nav { padding: 0 20px; }
   .hero { padding: 100px 20px 60px; }
+  .hero-h1 { max-width: 8.5ch; line-height: 1; }
   .preview-wrap { display: none; }
   .features { padding: 0 20px; margin-bottom: 60px; }
   .model-section { padding: 0 20px; }

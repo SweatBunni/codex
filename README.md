@@ -12,7 +12,9 @@ This version now uses a staged ChatGPT-style backend pipeline instead of a singl
 ## Model routing
 - Primary free model: `qwen/qwen3.6-plus-preview:free`
 - Fallback free coding model: `qwen/qwen3-coder:free`
-- Both are configured through OpenRouter and can be swapped with environment variables.
+- Coding-first model for Java generation: `qwen/qwen3-coder:free`
+- Coding fallback: `openai/gpt-oss-120b:free`
+- The backend can rotate across multiple OpenRouter candidates to survive single-model 429s.
 
 ## Setup
 

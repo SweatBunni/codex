@@ -46,6 +46,9 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     model: config.openrouter.primaryModel,
     fallbackModel: config.openrouter.fallbackModel,
+    codingModel: config.openrouter.codingPrimaryModel,
+    codingFallbackModel: config.openrouter.codingFallbackModel,
+    modelCandidates: config.openrouter.modelCandidates,
     reasoningEffort: config.openrouter.reasoningEffort,
     uptime: Math.floor(process.uptime()),
   });
@@ -213,6 +216,7 @@ app.listen(PORT, () => {
   logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
 
   const model =
+    config?.openrouter?.codingPrimaryModel ||
     config?.openrouter?.primaryModel ||
     config?.openrouter?.model ||
     process.env.OPENROUTER_MODEL ||

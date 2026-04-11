@@ -4,6 +4,7 @@ const config = require('../config');
 function getModelCandidates(preferredModel) {
   const candidates = [
     preferredModel,
+    ...(config.openrouter.modelCandidates || []),
     config.openrouter.primaryModel,
     config.openrouter.fallbackModel,
     config.openrouter.model,

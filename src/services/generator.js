@@ -516,7 +516,7 @@ async function generateMod(request, onProgress) {
   try {
     await fs.ensureDir(workDir);
     emit('status', `Starting mod generation (Job: ${jobId})`);
-    emit('status', `Using OpenRouter (${config.openrouter.primaryModel} -> ${config.openrouter.fallbackModel})`);
+    emit('status', `Using OpenRouter coding models (${config.openrouter.codingPrimaryModel} -> ${config.openrouter.codingFallbackModel})`);
     emit('pipeline', 'Stage 1/4: tokenization and semantic mapping');
     emit('ai', `Prompt: "${request.description}"`);
 
@@ -527,8 +527,8 @@ async function generateMod(request, onProgress) {
       gradleVersion: getGradleVersion(request.mcVersion, request.loader),
       maxTokens: config.openrouter.maxTokens,
       temperature: config.openrouter.temperature,
-      preferredModel: config.openrouter.primaryModel,
-      fallbackModel: config.openrouter.fallbackModel,
+      preferredModel: config.openrouter.codingPrimaryModel,
+      fallbackModel: config.openrouter.codingFallbackModel,
       promptFactory,
     };
 
