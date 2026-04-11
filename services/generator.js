@@ -290,9 +290,9 @@ async function fixSettings(workDir) {
         settings = await fs.readFile(settingsFile, 'utf8');
       }
       
-      // Add pluginManagement at the top if not already present
+      // Add pluginManagement at the end if not already present
       if (!settings.includes('pluginManagement')) {
-        settings = pluginMgmtMatch[0] + '\n\n' + settings;
+        settings = settings + '\n\n' + pluginMgmtMatch[0];
         await fs.writeFile(settingsFile, settings);
       }
 
@@ -302,9 +302,14 @@ async function fixSettings(workDir) {
     }
   }
 
-  // Validate and fix settings.gradle syntax
+  // Ensure settings.gradle has proper format
   if (await fs.pathExists(settingsFile)) {
     let settings = await fs.readFile(settingsFile, 'utf8');
+    
+    // Add rootProject.name if missing - MUST be at the start
+    if (!settings.includes('rootProject.name')) {
+      settings = "rootProject.name = 'modproject'\n\n" + settings;
+    }
     
     // Fix common mistake: Fabric() method instead of proper maven block
     if (settings.includes('Fabric()') || settings.includes('Fabric {')) {
@@ -382,7 +387,9 @@ function buildSystemPrompt(request, thinkingLevel) {
     loaderInstructions = `
 CRITICAL FABRIC REQUIREMENTS:
 
-settings.gradle EXACT FORMAT (copy this exactly):
+settings.gradle MUST start with rootProject name:
+rootProject.name = 'modname'
+
 pluginManagement {
   repositories {
     maven {
@@ -470,10 +477,12 @@ IMPORTANT:
 - Use EXACT plugin versions above. NO other versions or SNAPSHOT unless specified.
 - All files must be COMPLETE and valid Gradle syntax.
 - Include BOTH settings.gradle AND build.gradle (Fabric requires both)
-- settings.gradle: MUST have pluginManagement with maven { name='Fabric' url='...' }
+- settings.gradle MUST start with: rootProject.name = 'modname' on the first line
+- Then settings.gradle must have pluginManagement block with maven repositories
 - build.gradle: MUST have plugins block FIRST, then repositories
 - Do NOT put pluginManagement in build.gradle - it ONLY goes in settings.gradle
-- Gradle syntax: proper indentation, correct { } braces, name and url on separate lines
+- Do NOT put rootProject.name in build.gradle - it ONLY goes in settings.gradle
+- Gradle syntax: proper indentation, correct { } braces
 - Mod ID: lowercase with hyphens only
 - Java package: com.yourname.modidwithouyhyphens
 - Return COMPLETE file contents with newlines escaped as \\n
@@ -485,7 +494,7 @@ Return ONLY valid JSON (NO markdown, NO code blocks, just raw JSON):
   "packageName": "com.example.examplemod",
   "mcVersion": "${mcVersion}",
   "files": {
-    "settings.gradle": "pluginManagement {\\n  repositories {\\n    maven { name = \\"Fabric\\", url = \\"https://maven.fabricmc.net/\\" }\\n    gradlePluginPortal()\\n  }\\n}\\n",
+    "settings.gradle": "rootProject.name = 'example-mod'\\n\\npluginManagement {\\n  repositories {\\n    maven { name = \\"Fabric\\", url = \\"https://maven.fabricmc.net/\\" }\\n    gradlePluginPortal()\\n  }\\n}\\n",
     "build.gradle": "plugins { id \\"fabric-loom\\", version \\"${loomVer}\\" }\\ngroup = \\"com.example\\"\\nversion = \\"1.0.0\\"\\nrepositories { mavenCentral()\\n  maven { url = \\"https://maven.fabricmc.net/\\" } }\\ndependencies { minecraft \\"com.mojang:minecraft:${mcVersion}\\"\\n  mappings loomMapping()\\n  modImplementation \\"net.fabricmc:fabric-loader:0.15.11\\"\\n}\\n",
     "gradle.properties": "org.gradle.jvmargs=-Xmx1G\\n",
     "src/main/resources/fabric.mod.json": "{\\"schemaVersion\\": 1, \\"id\\": \\"example-mod\\", \\"version\\": \\"1.0.0\\", \\"name\\": \\"ExampleMod\\", \\"description\\": \\"A mod\\", \\"environment\\": \\"*\\", \\"entrypoints\\": {\\"main\\": [\\"com.example.examplemod.ExampleMod\\"]}, \\"mixins\\": [], \\"depends\\": {\\"fabricloader\\": \\">=0.14.0\\", \\"minecraft\\": \\"${mcVersion}\\", \\"java\\": \\">=17\\"}}\\n",
