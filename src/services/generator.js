@@ -12,7 +12,7 @@ const { execSync, spawn } = require('child_process');
 const config = require('../config');
 const { logger } = require('../utils/logger');
 
-const WORKSPACE_DIR = config.workspace.dir;
+const WORKSPACE_DIR = path.resolve(config.workspace.dir);
 
 // Java Auto-Detection
 const javaCache = {};
@@ -140,7 +140,7 @@ function buildPrompt(req) {
   const loaderUpper = loader.toUpperCase();
   const depBlock = buildDependencies(loader, mcVersion, loaderVersion);
 
-  return `You are an expert Minecraft mod developer. Generate a complete, working Minecraft mod.
+  return `You are an expert Minecraft mod developer. Generate a complete, working, multi-file Minecraft mod.
 
 REQUIREMENTS:
 - Mod description: ${description}
@@ -150,33 +150,50 @@ REQUIREMENTS:
 - Quality level: ${thinkingLevel}
 
 CRITICAL RULES:
-1. Output ONLY a valid JSON object - no markdown, no code fences, no commentary
+1. Output ONLY a valid JSON object - no markdown, no code fences, no commentary before or after
 2. All Java files must be syntactically valid and compile cleanly
 3. Use correct package structure: com.codexmc.<modid>
 4. Use proper ${loaderUpper} ${mcVersion} APIs - no deprecated methods
-5. Include ALL required files for a compilable mod
-6. The mod must actually implement the described feature
+5. ALWAYS split Java code into multiple files - one class per file, NO exceptions
+6. Each Java class MUST be its own separate .java file - main mod class, items, blocks, events, registry
+7. Never put multiple top-level classes in a single Java file
+8. Include ALL required files for a compilable mod
+9. The mod must fully implement the described feature
+
+MANDATORY MULTI-FILE JAVA STRUCTURE:
+- src/main/java/com/codexmc/<modid>/<ModId>Mod.java  (main entry point only)
+- src/main/java/com/codexmc/<modid>/init/ModItems.java (item DeferredRegister)
+- src/main/java/com/codexmc/<modid>/init/ModBlocks.java (block DeferredRegister)
+- src/main/java/com/codexmc/<modid>/item/<ItemName>.java (one file per item class)
+- src/main/java/com/codexmc/<modid>/block/<BlockName>.java (one file per block class)
+- src/main/java/com/codexmc/<modid>/event/<HandlerName>.java (one file per event handler)
+Add more files as the feature requires.
 
 ${depBlock}
 
-JSON FORMAT (output this exact structure, no extra text):
+JSON ESCAPING RULES (critical - invalid JSON breaks everything):
+- Escape all backslashes in Java source as \\\\
+- Escape all double-quotes inside Java strings as \\"
+- Represent newlines inside JSON string values as \\n (no literal newlines in strings)
+- The entire output must be parseable by JSON.parse()
+
+OUTPUT FORMAT - output ONLY this JSON, nothing before or after:
 {
-  "modId": "string (lowercase, no spaces, e.g. lightningsword)",
-  "modName": "string (display name)",
+  "modId": "examplemod",
+  "modName": "Example Mod",
   "version": "1.0.0",
-  "description": "string",
+  "description": "what the mod does",
   "files": {
-    "relative/path/File.java": "full java source code",
-    "build.gradle": "full gradle build script",
-    "settings.gradle": "full settings",
+    "src/main/java/com/codexmc/examplemod/ExampleMod.java": "package com.codexmc.examplemod;\\n\\nimport ...\\n\\n@Mod(\\"examplemod\\")\\npublic class ExampleMod { ... }",
+    "src/main/java/com/codexmc/examplemod/init/ModItems.java": "package com.codexmc.examplemod.init;\\n\\n...",
+    "src/main/java/com/codexmc/examplemod/item/MyItem.java": "package com.codexmc.examplemod.item;\\n\\n...",
+    "build.gradle": "...",
+    "settings.gradle": "...",
     "src/main/resources/META-INF/mods.toml": "...",
     "src/main/resources/pack.mcmeta": "..."
   }
+}`;
 }
-
-Include ALL necessary Java source files. Make the mod complete and functional.`;
-}
-
 function extractJSON(text) {
   try { return JSON.parse(text.trim()); } catch {}
   const start = text.indexOf('{');
@@ -260,8 +277,11 @@ function validateMod(mod) {
   if (!mod.modId || typeof mod.modId !== 'string') throw new Error('Missing modId');
   if (!mod.files || typeof mod.files !== 'object') throw new Error('Missing files');
   if (Object.keys(mod.files).length === 0) throw new Error('No files generated');
-  if (!Object.keys(mod.files).some(f => f.endsWith('.java'))) throw new Error('No Java files generated');
+  const javaFiles = Object.keys(mod.files).filter(f => f.endsWith('.java'));
+  if (javaFiles.length === 0) throw new Error('No Java files generated');
   if (!Object.keys(mod.files).some(f => f === 'build.gradle' || f === 'build.gradle.kts')) throw new Error('No build.gradle generated');
+  // Log how many Java files were generated
+  return { javaFileCount: javaFiles.length };
 }
 
 async function generateMod(request, onProgress) {
@@ -303,8 +323,9 @@ async function generateMod(request, onProgress) {
     validateMod(mod);
 
     const modId = mod.modId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const javaFiles = Object.keys(mod.files).filter(f => f.endsWith('.java'));
     emit('files', `Mod ID: ${modId}`);
-    emit('files', `Writing ${Object.keys(mod.files).length} files...`);
+    emit('files', `Writing ${Object.keys(mod.files).length} files (${javaFiles.length} Java files)...`);
 
     for (const [relPath, content] of Object.entries(mod.files)) {
       const fullPath = path.join(workDir, relPath);

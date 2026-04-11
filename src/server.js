@@ -14,11 +14,13 @@ const { logger } = require('./utils/logger');
 const { generateMod } = require('./services/generator');
 const { getForgeVersions, getFabricVersions, getNeoForgeVersions } = require('./services/versions');
 
+const WORKSPACE_DIR = path.resolve(config.workspace.dir);
+
 const app = express();
 expressWs(app);
 
 // Ensure dirs
-fs.ensureDirSync('./data/workspaces');
+fs.ensureDirSync(WORKSPACE_DIR);
 
 // Security
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -59,7 +61,7 @@ app.get('/api/versions/:loader', async (req, res) => {
 // Download JAR
 app.get('/api/download/jar/:jobId', async (req, res) => {
   try {
-    const workDir = path.join('./data/workspaces', req.params.jobId);
+    const workDir = path.join(WORKSPACE_DIR, req.params.jobId);
     const buildLibs = path.join(workDir, 'build', 'libs');
     if (!await fs.pathExists(buildLibs)) return res.status(404).json({ error: 'JAR not found' });
     const files = await fs.readdir(buildLibs);
@@ -74,7 +76,7 @@ app.get('/api/download/jar/:jobId', async (req, res) => {
 // Download Source ZIP
 app.get('/api/download/source/:jobId', async (req, res) => {
   try {
-    const workDir = path.join('./data/workspaces', req.params.jobId);
+    const workDir = path.join(WORKSPACE_DIR, req.params.jobId);
     const files = await fs.readdir(workDir);
     const zip = files.find(f => f.endsWith('-source.zip'));
     if (!zip) return res.status(404).json({ error: 'Source ZIP not found' });
