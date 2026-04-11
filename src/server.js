@@ -44,12 +44,9 @@ const apiLimiter = rateLimit({
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    model: config.lmstudio.model,
-    fallbackModel: config.lmstudio.fastModel,
-    codingModel: config.lmstudio.model,
-    codingFallbackModel: config.lmstudio.fastModel,
-    modelCandidates: [config.lmstudio.model],
-    reasoningEffort: undefined,
+    provider: 'puter.js',
+    model: config.puter.model,
+    fallbackModel: config.puter.fastModel,
     uptime: Math.floor(process.uptime()),
   });
 });
@@ -156,12 +153,7 @@ app.ws('/ws/generate', (ws, req) => {
 
       const saved = await appendTurn(chatId, {
         prompt: description,
-        request: {
-          loader,
-          mcVersion,
-          loaderVersion,
-          thinkingLevel: thinkingLevel || 'medium',
-        },
+        request: { loader, mcVersion, loaderVersion, thinkingLevel: thinkingLevel || 'medium' },
         result: {
           jobId: result.jobId,
           modId: result.modId,
@@ -192,12 +184,7 @@ app.ws('/ws/generate', (ws, req) => {
       try {
         const saved = await appendTurn(chatId, {
           prompt: description,
-          request: {
-            loader,
-            mcVersion,
-            loaderVersion,
-            thinkingLevel: thinkingLevel || 'medium',
-          },
+          request: { loader, mcVersion, loaderVersion, thinkingLevel: thinkingLevel || 'medium' },
           error: error.message,
         });
         send('error', `Generation failed: ${error.message}`, { chatId: saved.chat.id });
@@ -213,9 +200,6 @@ app.ws('/ws/generate', (ws, req) => {
 // ─── Start ───────────────────────────────────────────────────────
 const PORT = config?.server?.port || process.env.PORT || 3000;
 app.listen(PORT, () => {
-  logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
-
-  const model = config?.lmstudio?.model || process.env.LM_STUDIO_MODEL || "unknown";
-
-  logger.info(`AI Model: ${model}`);
+  logger.info(`CodexMC running on http://localhost:${PORT}`);
+  logger.info(`AI Provider: puter.js | Model: ${config.puter.model}`);
 });

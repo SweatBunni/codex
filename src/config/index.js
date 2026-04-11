@@ -6,11 +6,10 @@ module.exports = {
     nodeEnv: process.env.NODE_ENV || 'development',
     siteUrl: process.env.SITE_URL || 'http://localhost:3000',
   },
-  lmstudio: {
-    url: process.env.LM_STUDIO_URL || 'http://localhost:1234',
-    model: process.env.LM_STUDIO_MODEL || 'local-model',
-    fastModel: process.env.LM_STUDIO_FAST_MODEL || process.env.LM_STUDIO_MODEL || 'local-model',
-    apiToken: process.env.LM_API_TOKEN || '',
+  puter: {
+    apiToken: process.env.PUTER_API_TOKEN || '',
+    model: process.env.PUTER_MODEL || 'claude-sonnet-4-5',
+    fastModel: process.env.PUTER_FAST_MODEL || process.env.PUTER_MODEL || 'claude-sonnet-4-5',
     maxTokens: 8000,
     temperature: 0.2,
   },

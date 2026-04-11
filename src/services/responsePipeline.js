@@ -1,73 +1,83 @@
-const axios = require('axios');
+/**
+ * CodexMC — AI Pipeline powered by puter.js
+ * Replaces LM Studio with puter.ai.chat() — no API keys required.
+ */
 
-// ==========================================
-// LM STUDIO CLIENT (Local AI — No API Key Needed)
-// https://lmstudio.ai/docs/api
-// ==========================================
+const { init } = require('@heyputer/puter.js/src/init.cjs');
 
-// LM Studio exposes an OpenAI-compatible endpoint at localhost:1234 by default.
-// Start it with: lms server start
-// Set LM_STUDIO_URL in .env to override (e.g. for remote/headless deployments).
-const LM_STUDIO_URL = (process.env.LM_STUDIO_URL || 'http://localhost:1234') + '/v1/chat/completions';
-
-// Model identifier — set LM_STUDIO_MODEL in .env to match whatever model you have loaded.
-// Examples: "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF"
-//           "openai/gpt-oss-20b"
-// Leave as "local-model" to use whatever is currently loaded in LM Studio.
-const PRIMARY_MODEL = process.env.LM_STUDIO_MODEL || 'local-model';
-const FAST_MODEL = process.env.LM_STUDIO_FAST_MODEL || PRIMARY_MODEL;
-
-async function callLMStudio({ messages, maxTokens = 4096, temperature = 0.2, isRepair = false }) {
-  const model = isRepair ? FAST_MODEL : PRIMARY_MODEL;
-
-  // Optional bearer token — set LM_API_TOKEN in .env if you've enabled auth.
-  const headers = { 'Content-Type': 'application/json' };
-  if (process.env.LM_API_TOKEN) {
-    headers['Authorization'] = `Bearer ${process.env.LM_API_TOKEN}`;
+// Initialize puter with auth token from env (or anonymous if not set)
+let puter;
+function getPuter() {
+  if (!puter) {
+    const token = process.env.PUTER_API_TOKEN || '';
+    puter = init(token || undefined);
   }
+  return puter;
+}
 
+// Default model — can be overridden via PUTER_MODEL env var
+// claude-sonnet-4-5 is a strong coding model available on puter.js
+const PRIMARY_MODEL = process.env.PUTER_MODEL || 'claude-sonnet-4-5';
+const FAST_MODEL = process.env.PUTER_FAST_MODEL || PRIMARY_MODEL;
+
+const MAX_RETRIES = parseInt(process.env.PUTER_RETRIES, 10) || 2;
+
+// ==========================================
+// PUTER AI CLIENT
+// ==========================================
+
+async function checkPuterHealth() {
   try {
-    const response = await axios.post(LM_STUDIO_URL, {
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }, {
-      headers,
-      timeout: 180000, // 3 minutes — local models can be slow
-    });
-
-    const content = response.data.choices[0].message.content;
-    return {
-      content,
-      model: response.data.model || model,
-    };
-  } catch (error) {
-    const status = error.response?.status;
-    const msg = error.response?.data?.error?.message || error.message;
-
-    if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
-      throw new Error(
-        `Cannot connect to LM Studio at ${LM_STUDIO_URL}. ` +
-        `Make sure LM Studio is running and the server is started:\n` +
-        `  lms server start\n` +
-        `Or set LM_STUDIO_URL in your .env to the correct address.`
-      );
-    }
-    if (status === 503) {
-      throw new Error(
-        `LM Studio returned 503 — no model is loaded. ` +
-        `Load a model in the LM Studio UI or run: lms get <model-name>`
-      );
-    }
-    if (status === 401) throw new Error(`LM Studio auth error: ${msg}. Check LM_API_TOKEN in your .env.`);
-    throw new Error(`LM Studio API error (${status || 'unknown'}): ${msg}`);
+    const p = getPuter();
+    const res = await p.ai.chat('Say "ok"', { model: PRIMARY_MODEL });
+    const text = extractText(res);
+    if (text) return true;
+    throw new Error('Puter returned empty response');
+  } catch (err) {
+    throw new Error(`Puter.js health check failed: ${err.message}`);
   }
+}
+
+function extractText(response) {
+  if (typeof response === 'string') return response;
+  if (response?.message?.content) {
+    const c = response.message.content;
+    if (Array.isArray(c)) return c.map(b => (b.type === 'text' ? b.text : '')).join('');
+    return String(c);
+  }
+  return String(response ?? '');
+}
+
+async function callPuter({ messages, maxTokens = 8000, temperature = 0.2, isRepair = false }) {
+  const model = isRepair ? FAST_MODEL : PRIMARY_MODEL;
+  const p = getPuter();
+  let lastError;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        const backoffMs = Math.min(5000 * Math.pow(2, attempt - 1), 30000);
+        console.log(`[puter] Retry attempt ${attempt + 1}/${MAX_RETRIES + 1} after ${backoffMs}ms...`);
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
+
+      const response = await p.ai.chat(messages, { model, max_tokens: maxTokens });
+      const content = extractText(response);
+      if (!content) throw new Error('Puter returned no content');
+      return { content, model };
+    } catch (error) {
+      lastError = error;
+      console.warn(`[puter] Attempt ${attempt + 1} failed: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Puter.js API error after ${MAX_RETRIES + 1} attempts: ${lastError.message}`);
 }
 
 // ==========================================
 // TEXT ANALYSIS HELPERS
 // ==========================================
+
 function approximateTokenCount(text) {
   return Math.max(1, Math.ceil((text || '').length / 4));
 }
@@ -118,6 +128,7 @@ function inferConstraints(text) {
 // ==========================================
 // PROMPT BUILDERS
 // ==========================================
+
 function buildArchitectureMessages(request, analysis, helpers) {
   return [
     {
@@ -189,28 +200,19 @@ function buildRepairMessages(request, architecture, previousResponse, validation
 }
 
 function extractJSON(text) {
-  try {
-    return JSON.parse(text.trim());
-  } catch {}
-
-  // Strip markdown code fences — local models often wrap JSON in them
+  try { return JSON.parse(text.trim()); } catch {}
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1].trim()); } catch {}
-  }
-
-  // Last resort: find outermost { }
+  if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch {} }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1) {
-    try { return JSON.parse(text.slice(start, end + 1)); } catch {}
-  }
+  if (start !== -1 && end !== -1) { try { return JSON.parse(text.slice(start, end + 1)); } catch {} }
   throw new Error('Failed to parse JSON from AI response');
 }
 
 // ==========================================
 // MAIN PIPELINE FUNCTIONS
 // ==========================================
+
 async function buildResponsePlan(request, helpers, emit) {
   const analysis = {
     tokenization: tokenizePrompt(request.description),
@@ -219,8 +221,9 @@ async function buildResponsePlan(request, helpers, emit) {
 
   emit('pipeline', `Tokenized prompt into ~${analysis.tokenization.approximateTokenCount} tokens`);
   emit('pipeline', `Mapped semantic intent: ${analysis.vectorization.inferredIntent}`);
+  emit('pipeline', `Calling puter.ai (${PRIMARY_MODEL}) for architecture planning...`);
 
-  const architectureResult = await callLMStudio({
+  const architectureResult = await callPuter({
     messages: buildArchitectureMessages(request, analysis, helpers),
     maxTokens: 3000,
     temperature: 0.2,
@@ -229,41 +232,29 @@ async function buildResponsePlan(request, helpers, emit) {
   const architecture = extractJSON(architectureResult.content);
   emit('pipeline', `Predicted architecture with ${Array.isArray(architecture.requiredFiles) ? architecture.requiredFiles.length : 0} key files`);
 
-  return {
-    analysis,
-    architecture,
-    architectureModel: architectureResult.model,
-  };
+  return { analysis, architecture, architectureModel: architectureResult.model };
 }
 
 async function generateProjectFromPlan(request, plan, helpers, emit, validateMod) {
-  const generationResult = await callLMStudio({
+  emit('pipeline', `Generating full project with puter.ai (${PRIMARY_MODEL})...`);
+
+  const generationResult = await callPuter({
     messages: buildGenerationMessages(request, plan.analysis, plan.architecture, helpers),
     maxTokens: helpers.maxTokens || 8000,
     temperature: helpers.temperature || 0.2,
   });
 
-  emit('pipeline', `Generated project draft with ${generationResult.model}`);
+  emit('pipeline', `Generated project draft`);
 
   try {
     const parsed = extractJSON(generationResult.content);
     validateMod(parsed);
-    return {
-      mod: parsed,
-      modelUsed: generationResult.model,
-      repaired: false,
-    };
+    return { mod: parsed, modelUsed: generationResult.model, repaired: false };
   } catch (error) {
-    emit('pipeline', 'Validation failed, running repair pass');
+    emit('pipeline', 'Validation failed, running repair pass with puter.ai...');
 
-    const repairResult = await callLMStudio({
-      messages: buildRepairMessages(
-        request,
-        plan.architecture,
-        generationResult.content,
-        error.message,
-        helpers
-      ),
+    const repairResult = await callPuter({
+      messages: buildRepairMessages(request, plan.architecture, generationResult.content, error.message, helpers),
       maxTokens: helpers.maxTokens || 8000,
       temperature: 0.15,
       isRepair: true,
@@ -271,16 +262,13 @@ async function generateProjectFromPlan(request, plan, helpers, emit, validateMod
 
     const parsed = extractJSON(repairResult.content);
     validateMod(parsed);
-
-    return {
-      mod: parsed,
-      modelUsed: repairResult.model,
-      repaired: true,
-    };
+    return { mod: parsed, modelUsed: repairResult.model, repaired: true };
   }
 }
 
 module.exports = {
+  checkLMStudioHealth: checkPuterHealth, // kept for backward compat
+  checkPuterHealth,
   buildResponsePlan,
   generateProjectFromPlan,
   extractJSON,

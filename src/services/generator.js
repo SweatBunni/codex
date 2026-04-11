@@ -1,6 +1,5 @@
 /**
  * CodexMC v6 - AI-powered Minecraft Mod Generator (Auto-Fix Engine)
- * Features: Auto-deps, Multi-module, IDE Run Configs, Context-Aware Fixing, Auto-Compiler-Repair
  */
 
 const fs = require('fs-extra');
@@ -10,7 +9,7 @@ const archiver = require('archiver');
 const { execSync, spawn } = require('child_process');
 const config = require('../config');
 const { logger } = require('../utils/logger');
-const { buildResponsePlan, generateProjectFromPlan } = require('./responsePipeline');
+const { buildResponsePlan, generateProjectFromPlan, checkLMStudioHealth } = require('./responsePipeline');
 
 const WORKSPACE_DIR = path.resolve(config.workspace.dir);
 const MAX_AUTO_FIX_RETRIES = 2;
@@ -94,9 +93,6 @@ function getJavaVersionString(mcVersion) {
   if (major === 16) return 'JavaVersion.VERSION_16'; return 'JavaVersion.VERSION_1_8';
 }
 
-// ==========================================
-// CONTEXT LOADER
-// ==========================================
 async function loadPreviousJobContext(previousJobId) {
   const prevWorkDir = path.join(WORKSPACE_DIR, previousJobId);
   if (!await fs.pathExists(prevWorkDir)) throw new Error(`Previous job ${previousJobId} not found.`);
@@ -118,14 +114,10 @@ async function loadPreviousJobContext(previousJobId) {
   return { files: originalFiles, workDir: prevWorkDir };
 }
 
-// ==========================================
-// PROMPT GENERATORS (BRUTALLY STRICT)
-// ==========================================
 function buildNewPrompt(req) {
   const { description, loader, mcVersion, loaderVersion } = req;
   const javaMajor = requiredJavaMajor(mcVersion);
   const moduleInstructions = (loader === 'forge' || loader === 'neoforge') ? `\n- Put client-only code in: "src/client/java/com/codexmc/..."\n- Put shared code in: "src/main/java/com/codexmc/..."` : '';
-
   return `You are an expert Minecraft mod developer. Generate a complete, working, multi-file Minecraft mod.
 REQUIREMENTS:
 - Mod description: ${description}
@@ -154,7 +146,6 @@ OUTPUT FORMAT - You must output EXACTLY this structure, nothing else:
 
 function buildFixPrompt(req, originalContext) {
   const existingFilesString = Object.entries(originalContext.files).map(([p, c]) => `--- ${p} ---\n${c}`).join('\n\n');
-  
   return `You are an expert Minecraft mod developer fixing an EXISTING mod.
 USER REQUEST: "${req.description}"
 
@@ -196,7 +187,7 @@ CRITICAL RULES:
 5. Ensure all imports actually exist for Minecraft ${request.mcVersion} ${request.loader}.
 6. DO NOT output build.gradle, settings.gradle, or metadata files.
 
-OUTPUT FORMAT - You must output EXACTLY this structure, nothing else:
+OUTPUT FORMAT:
 {
   "modId": "autofixmod",
   "modName": "Auto Fix Mod",
@@ -208,9 +199,6 @@ OUTPUT FORMAT - You must output EXACTLY this structure, nothing else:
 }`;
 }
 
-// ==========================================
-// FILE & BUILD HELPERS
-// ==========================================
 function normalizeFileContent(relPath, content) {
   if (typeof content !== 'string') return String(content ?? '');
   const isSerializedWholeFile = !content.includes('\n') && /\\n|\\r\\n|\\"|\\t/.test(content);
@@ -276,9 +264,6 @@ function validateMod(mod) {
   return { javaFileCount: javaFiles.length };
 }
 
-// ==========================================
-// DEPENDENCY AUTO-MATCHING ENGINE
-// ==========================================
 function injectDynamicDependencies(buildGradle, loader, mcVersion, files) {
   let modifiedGradle = buildGradle;
   const neededRepos = new Set(); const neededDeps = new Set();
@@ -300,178 +285,13 @@ function injectDynamicDependencies(buildGradle, loader, mcVersion, files) {
   return modifiedGradle;
 }
 
-// ==========================================
-// BUILD GENERATION SYSTEM
-// ==========================================
-function buildFabricSettingsGradle(rootName) {
-  return `pluginManagement {
-    repositories {
-        maven {
-            name = 'Fabric'
-            url = 'https://maven.fabricmc.net/'
-        }
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
+function buildFabricSettingsGradle(rootName) { return `pluginManagement {\n    repositories {\n        maven {\n            name = 'Fabric'\n            url = 'https://maven.fabricmc.net/'\n        }\n        mavenCentral()\n        gradlePluginPortal()\n    }\n}\n\nrootProject.name = '${rootName}'`; }
+function buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion }) { const javaMajor = requiredJavaMajor(mcVersion); return `plugins {\n    id 'fabric-loom' version '${getFabricLoom(mcVersion)}'\n    id 'maven-publish'\n}\n\nversion = '${version}'\ngroup = 'com.codexmc'\n\nbase { archivesName = '${modId}' }\n\nrepositories {\n    mavenCentral()\n}\n\ndependencies {\n    minecraft "com.mojang:minecraft:${mcVersion}"\n    mappings loom.layered() { officialMojangMappings() }\n    modImplementation "net.fabricmc:fabric-loader:${loaderVersion || '0.15.11'}"\n    modImplementation "net.fabricmc.fabric-api:fabric-api:${getFabricApi(mcVersion)}"\n}\n\nprocessResources {\n    inputs.property "version", project.version\n    filesMatching("fabric.mod.json") { expand "version", inputs.properties.version }\n}\n\ntasks.withType(JavaCompile).configureEach { it.options.release = ${javaMajor} }\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }\n    withSourcesJar()\n    sourceCompatibility = ${getJavaVersionString(mcVersion)}\n    targetCompatibility = ${getJavaVersionString(mcVersion)}\n}\n\npublishing {\n    publications { mavenJava(MavenPublication) { from components.java } }\n}`; }
+function buildForgeSettingsGradle(rootName) { return `pluginManagement {\n    repositories {\n        gradlePluginPortal()\n        maven {\n            url = 'https://maven.minecraftforge.net/'\n        }\n    }\n}\n\nrootProject.name = '${rootName}'`; }
+function buildForgeBuildGradle({ modId, version, mcVersion, loaderVersion }) { const javaMajor = requiredJavaMajor(mcVersion); return `plugins {\n    id 'net.minecraftforge.gradle' version '[6.0,6.2)'\n}\n\nversion = '${version}'\ngroup = 'com.codexmc'\n\nbase { archivesName = '${modId}' }\n\nsourceSets {\n    main { resources { srcDirs = ["src/main/resources"] } }\n    client { compileClasspath += main.output; runtimeClasspath += main.output }\n    server { compileClasspath += main.output; runtimeClasspath += main.output }\n}\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }\n    withSourcesJar()\n}\n\nminecraft {\n    mappings channel: 'official', version: '${mcVersion}'\n    copyIdeResources = true\n    runs {\n        client { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } }\n        server { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } }\n    }\n}\n\ndependencies {\n    minecraft "net.minecraftforge:forge:${mcVersion}-${loaderVersion}"\n}\n\ntasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }\n\npublishing {\n    publications { register('mavenJava', MavenPublication) { from components.java } }\n}`; }
+function buildNeoForgeSettingsGradle(rootName) { return `pluginManagement {\n    repositories {\n        gradlePluginPortal()\n        maven {\n            url = 'https://maven.neoforged.net/releases/'\n        }\n    }\n}\n\nrootProject.name = '${rootName}'`; }
+function buildNeoForgeBuildGradle({ modId, version, mcVersion, loaderVersion }) { const javaMajor = requiredJavaMajor(mcVersion); return `plugins {\n    id 'java-library'\n    id 'net.neoforged.moddev' version '2.0.28-beta'\n}\n\nversion = '${version}'\ngroup = 'com.codexmc'\n\nbase { archivesName = '${modId}' }\n\nsourceSets {\n    main { resources { srcDirs = ["src/main/resources"] } }\n    client { compileClasspath += main.output; runtimeClasspath += main.output }\n    server { compileClasspath += main.output; runtimeClasspath += main.output }\n}\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }\n    withSourcesJar()\n}\n\nrepositories { mavenLocal() }\n\nneoForge {\n    version = "${loaderVersion}"\n    runs {\n        client { client(); systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id }\n        server { server(); programArgument '--nogui'; systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id }\n    }\n    mods { "${modId}" { sourceSet sourceSets.main } }\n}\n\ntasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }\n\npublishing {\n    publications { register('mavenJava', MavenPublication) { from components.java } }\n}`; }
 
-rootProject.name = '${rootName}'`;
-}
-
-function buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion }) {
-  const javaMajor = requiredJavaMajor(mcVersion);
-  return `plugins {
-    id 'fabric-loom' version '${getFabricLoom(mcVersion)}'
-    id 'maven-publish'
-}
-
-version = '${version}'
-group = 'com.codexmc'
-
-base { archivesName = '${modId}' }
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    minecraft "com.mojang:minecraft:${mcVersion}"
-    mappings loom.layered() { officialMojangMappings() }
-    modImplementation "net.fabricmc:fabric-loader:${loaderVersion || '0.15.11'}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${getFabricApi(mcVersion)}"
-}
-
-processResources {
-    inputs.property "version", project.version
-    filesMatching("fabric.mod.json") { expand "version": inputs.properties.version }
-}
-
-tasks.withType(JavaCompile).configureEach { it.options.release = ${javaMajor} }
-
-java {
-    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }
-    withSourcesJar()
-    sourceCompatibility = ${getJavaVersionString(mcVersion)}
-    targetCompatibility = ${getJavaVersionString(mcVersion)}
-}
-
-publishing {
-    publications { mavenJava(MavenPublication) { from components.java } }
-}`;
-}
-
-function buildForgeSettingsGradle(rootName) {
-  return `pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        maven {
-            url = 'https://maven.minecraftforge.net/'
-        }
-    }
-}
-
-rootProject.name = '${rootName}'`;
-}
-
-function buildForgeBuildGradle({ modId, version, mcVersion, loaderVersion }) {
-  const javaMajor = requiredJavaMajor(mcVersion);
-  return `plugins {
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
-}
-
-version = '${version}'
-group = 'com.codexmc'
-
-base { archivesName = '${modId}' }
-
-sourceSets {
-    main { resources { srcDirs = ["src/main/resources"] } }
-    client { compileClasspath += main.output; runtimeClasspath += main.output }
-    server { compileClasspath += main.output; runtimeClasspath += main.output }
-}
-
-java {
-    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }
-    withSourcesJar()
-}
-
-minecraft {
-    mappings channel: 'official', version: '${mcVersion}'
-    copyIdeResources = true
-    runs {
-        client { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } }
-        server { workingDirectory project.file('run'); property 'forge.logging.markers', 'REGISTRIES'; mods { ${modId} { source sourceSets.main } } }
-    }
-}
-
-dependencies {
-    minecraft "net.minecraftforge:forge:${mcVersion}-${loaderVersion}"
-}
-
-tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
-
-publishing {
-    publications { register('mavenJava', MavenPublication) { from components.java } }
-}`;
-}
-
-function buildNeoForgeSettingsGradle(rootName) {
-  return `pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        maven {
-            url = 'https://maven.neoforged.net/releases/'
-        }
-    }
-}
-
-rootProject.name = '${rootName}'`;
-}
-
-function buildNeoForgeBuildGradle({ modId, version, mcVersion, loaderVersion }) {
-  const javaMajor = requiredJavaMajor(mcVersion);
-  return `plugins {
-    id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.28-beta'
-}
-
-version = '${version}'
-group = 'com.codexmc'
-
-base { archivesName = '${modId}' }
-
-sourceSets {
-    main { resources { srcDirs = ["src/main/resources"] } }
-    client { compileClasspath += main.output; runtimeClasspath += main.output }
-    server { compileClasspath += main.output; runtimeClasspath += main.output }
-}
-
-java {
-    toolchain { languageVersion = JavaLanguageVersion.of(${javaMajor}) }
-    withSourcesJar()
-}
-
-repositories { mavenLocal() }
-
-neoForge {
-    version = "${loaderVersion}"
-    runs {
-        client { client(); systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id }
-        server { server(); programArgument '--nogui'; systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id }
-    }
-    mods { "${modId}" { sourceSet sourceSets.main } }
-}
-
-tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
-
-publishing {
-    publications { register('mavenJava', MavenPublication) { from components.java } }
-}`;
-}
-
-// ==========================================
-// METADATA & IDE RUN CONFIGS
-// ==========================================
 function inferEntrypoint(mod, fallbackId, type) {
   const javaFiles = Object.entries(mod.files).filter(([file]) => file.endsWith('.java'));
   let preferred = type === 'fabric' ? (javaFiles.find(([, c]) => /implements\s+ModInitializer\b/.test(c)) || javaFiles[0]) : (javaFiles.find(([, c]) => /@Mod\b/.test(c)) || javaFiles[0]);
@@ -481,19 +301,9 @@ function inferEntrypoint(mod, fallbackId, type) {
   return `${pkg}.${className}`;
 }
 
-function buildFabricModJson({ modId, modName, version, description, entrypoint, javaMajor }) {
-  return JSON.stringify({ schemaVersion: 1, id: modId, version, name: modName, description, authors: ['CodexMC'], contact: {}, license: 'All Rights Reserved', environment: '*', entrypoints: { main: [entrypoint] }, depends: { fabricloader: '>=0.15.11', minecraft: '*', java: `>=${javaMajor}`, 'fabric-api': '*' } }, null, 2);
-}
-
-function buildForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion }) {
-  const major = (loaderVersion || '47').split('.')[0];
-  return `modLoader="javafml"\nloaderVersion="[${major},)"\nlicense="All Rights Reserved"\n\n[[mods]]\nmodId="${modId}"\nversion="${version}"\ndisplayName="${modName}"\ndescription=\'\'\'${description}\'\'\'\n\n[[dependencies.${modId}]]\nmodId="forge"\nmandatory=true\nversionRange="[${major},)"\nordering="NONE"\nside="BOTH"\n\n[[dependencies.${modId}]]\nmodId="minecraft"\nmandatory=true\nversionRange="[${mcVersion},)"\nordering="NONE"\nside="BOTH"`;
-}
-
-function buildNeoForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion }) {
-  const parts = (loaderVersion || '20.4.167').split('.');
-  return `modLoader="javafml"\nloaderVersion="[4,)"\nlicense="All Rights Reserved"\n\n[[mods]]\nmodId="${modId}"\nversion="${version}"\ndisplayName="${modName}"\ndescription=\'\'\'${description}\'\'\'\n\n[[dependencies.${modId}]]\nmodId="neoforge"\nmandatory=true\nversionRange="[${parts[0]}.${parts[1]},)"\nordering="NONE"\nside="BOTH"\n\n[[dependencies.${modId}]]\nmodId="minecraft"\nmandatory=true\nversionRange="[${mcVersion},)"\nordering="NONE"\nside="BOTH"`;
-}
+function buildFabricModJson({ modId, modName, version, description, entrypoint, javaMajor }) { return JSON.stringify({ schemaVersion: 1, id: modId, version, name: modName, description, authors: ['CodexMC'], contact: {}, license: 'All Rights Reserved', environment: '*', entrypoints: { main: [entrypoint] }, depends: { fabricloader: '>=0.15.11', minecraft: '*', java: `>=${javaMajor}`, 'fabric-api': '*' } }, null, 2); }
+function buildForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion }) { const major = (loaderVersion || '47').split('.')[0]; return `modLoader="javafml"\nloaderVersion="[${major},)"\nlicense="All Rights Reserved"\n\n[[mods]]\nmodId="${modId}"\nversion="${version}"\ndisplayName="${modName}"\ndescription=\'\'\'${description}\'\'\'\n\n[[dependencies.${modId}]]\nmodId="forge"\nmandatory=true\nversionRange="[${major},)"\nordering="NONE"\nside="BOTH"\n\n[[dependencies.${modId}]]\nmodId="minecraft"\nmandatory=true\nversionRange="[${mcVersion},)"\nordering="NONE"\nside="BOTH"`; }
+function buildNeoForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion }) { const parts = (loaderVersion || '20.4.167').split('.'); return `modLoader="javafml"\nloaderVersion="[4,)"\nlicense="All Rights Reserved"\n\n[[mods]]\nmodId="${modId}"\nversion="${version}"\ndisplayName="${modName}"\ndescription=\'\'\'${description}\'\'\'\n\n[[dependencies.${modId}]]\nmodId="neoforge"\nmandatory=true\nversionRange="[${parts[0]}.${parts[1]},)"\nordering="NONE"\nside="BOTH"\n\n[[dependencies.${modId}]]\nmodId="minecraft"\nmandatory=true\nversionRange="[${mcVersion},)"\nordering="NONE"\nside="BOTH"`; }
 
 function buildIDEConfigs(modId) {
   return {
@@ -502,13 +312,8 @@ function buildIDEConfigs(modId) {
   };
 }
 
-function buildDefaultPackMcmeta(description) { 
-  return JSON.stringify({ pack: { pack_format: 15, description: description.replace(/"/g, '\\"') } }, null, 2); 
-}
+function buildDefaultPackMcmeta(description) { return JSON.stringify({ pack: { pack_format: 15, description: description.replace(/"/g, '\\"') } }, null, 2); }
 
-// ==========================================
-// MOD NORMALIZER
-// ==========================================
 function normalizeGeneratedMod(mod, request, originalFiles = null) {
   const normalized = { ...mod, files: { ...mod.files } };
   const modId = (normalized.modId || 'examplemod').toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -527,20 +332,17 @@ function normalizeGeneratedMod(mod, request, originalFiles = null) {
     normalized.files['settings.gradle'] = buildFabricSettingsGradle(modId);
     buildGradle = buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion });
     normalized.files['src/main/resources/fabric.mod.json'] = buildFabricModJson({ modId, modName, version, description, entrypoint, javaMajor: requiredJavaMajor(mcVersion) });
-    delete normalized.files['src/main/resources/META-INF/mods.toml']; 
-    delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
+    delete normalized.files['src/main/resources/META-INF/mods.toml']; delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
   } else if (request.loader === 'forge') {
     normalized.files['settings.gradle'] = buildForgeSettingsGradle(modId);
     buildGradle = buildForgeBuildGradle({ modId, version, mcVersion, loaderVersion });
     normalized.files['src/main/resources/META-INF/mods.toml'] = buildForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion });
-    delete normalized.files['src/main/resources/fabric.mod.json']; 
-    delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
+    delete normalized.files['src/main/resources/fabric.mod.json']; delete normalized.files['src/main/resources/META-INF/neoforge.mods.toml'];
   } else if (request.loader === 'neoforge') {
     normalized.files['settings.gradle'] = buildNeoForgeSettingsGradle(modId);
     buildGradle = buildNeoForgeBuildGradle({ modId, version, mcVersion, loaderVersion });
     normalized.files['src/main/resources/META-INF/neoforge.mods.toml'] = buildNeoForgeModsToml({ modId, modName, version, description, mcVersion, loaderVersion });
-    delete normalized.files['src/main/resources/fabric.mod.json']; 
-    delete normalized.files['src/main/resources/META-INF/mods.toml'];
+    delete normalized.files['src/main/resources/fabric.mod.json']; delete normalized.files['src/main/resources/META-INF/mods.toml'];
   }
 
   if (!normalized.files['src/main/resources/pack.mcmeta']) normalized.files['src/main/resources/pack.mcmeta'] = buildDefaultPackMcmeta(description);
@@ -551,13 +353,9 @@ function normalizeGeneratedMod(mod, request, originalFiles = null) {
   
   const ideConfigs = buildIDEConfigs(modId);
   for (const [p, c] of Object.entries(ideConfigs)) normalized.files[p] = c;
-
   return normalized;
 }
 
-// ==========================================
-// MAIN GENERATION PIPELINE (WITH AUTO-FIX)
-// ==========================================
 async function generateMod(request, onProgress) {
   const jobId = uuidv4();
   const workDir = path.join(WORKSPACE_DIR, jobId);
@@ -568,6 +366,11 @@ async function generateMod(request, onProgress) {
   try {
     await fs.ensureDir(workDir);
     emit('status', isFixRequest ? `Starting FIX pass for Job: ${request.previousJobId}` : `Starting mod generation (Job: ${jobId})`);
+
+    // PRE-FLIGHT CHECK
+    emit('pipeline', 'Verifying LM Studio connection...');
+    await checkLMStudioHealth();
+    emit('pipeline', 'LM Studio connected. Starting AI pipeline...');
 
     let originalContext = null;
     let promptFactory;
@@ -582,12 +385,12 @@ async function generateMod(request, onProgress) {
       promptFactory = (req) => buildNewPrompt(req);
     }
 
-        const helpers = {
+    const helpers = {
       javaMajor: requiredJavaMajor(request.mcVersion), 
       javaVersionEnum: getJavaVersionString(request.mcVersion),
       gradleVersion: getGradleVersion(request.mcVersion, request.loader), 
-      maxTokens: 8000,             // Token limit for LM Studio
-      temperature: 0.2,           // Hardcoded for strict JSON
+      maxTokens: 8000,
+      temperature: 0.2,
       promptFactory,
     };
 
@@ -635,14 +438,8 @@ async function generateMod(request, onProgress) {
       try {
         if (attempt > 0) {
           emit('pipeline', `Auto-fix attempt ${attempt}/${MAX_AUTO_FIX_RETRIES}...`);
-          
-          // Extract specific java compiler errors from the massive log
           const errorLogs = buildError.split('\n').filter(l => l.includes('.java:') && l.includes('error:')).join('\n');
-          
-          if (!errorLogs) {
-            emit('warning', 'Build failed with non-fixable Gradle error (e.g. plugin missing).');
-            break; 
-          }
+          if (!errorLogs) { emit('warning', 'Build failed with non-fixable Gradle error.'); break; }
 
           const fixHelpers = { ...helpers, promptFactory: (req) => buildAutoFixPrompt(req, errorLogs) };
           const fakePlan = { analysis: { tokenization: { approximateTokenCount: 0 }, vectorization: { inferredIntent: 'autofix', topTerms: [] } }, architectureModel: 'autofix' };
@@ -650,8 +447,6 @@ async function generateMod(request, onProgress) {
           try {
             const fixGeneration = await generateProjectFromPlan(request, fakePlan, fixHelpers, emit, () => {});
             const fixedMod = fixGeneration.mod;
-            
-            // Overwrite ONLY the broken Java files in the workspace
             for (const [relPath, content] of Object.entries(fixedMod.files)) {
               if (relPath.endsWith('.java')) {
                 const fullPath = path.join(workDir, relPath);
@@ -660,31 +455,19 @@ async function generateMod(request, onProgress) {
                 emit('pipeline', `Patched ${relPath}`);
               }
             }
-          } catch (aiError) {
-            emit('warning', `AI failed to generate patch: ${aiError.message}`);
-            break;
-          }
+          } catch (aiError) { emit('warning', `AI failed to generate patch: ${aiError.message}`); break; }
         }
 
-        // Attempt build
         await buildMod(workDir, request.mcVersion, request.loader, attempt > 0 ? () => {} : emit);
         jarPath = await findJar(workDir);
         buildSuccess = true;
-        
-        if (attempt > 0) {
-          emit('success', `BUILD SUCCESSFUL (Fixed on attempt ${attempt})`);
-        } else {
-          emit('success', 'BUILD SUCCESSFUL');
-        }
-        
+        emit('success', attempt > 0 ? `BUILD SUCCESSFUL (Fixed on attempt ${attempt})` : 'BUILD SUCCESSFUL');
         if (jarPath) emit('success', `JAR: ${path.basename(jarPath)}`);
-        break; // Break loop on success
+        break;
 
       } catch (err) {
         buildError = err.message;
-        if (attempt === MAX_AUTO_FIX_RETRIES) {
-          emit('warning', 'Compile failed after max auto-fix attempts - source ZIP still available');
-        }
+        if (attempt === MAX_AUTO_FIX_RETRIES) emit('warning', 'Compile failed after max auto-fix attempts');
       }
     }
 
