@@ -1,832 +1,369 @@
-/**
- * CodexMC — Frontend App
- */
+/* ═══════════════════════════════════════════════════════════
+   CodexMC v3 — Frontend App
+   WebSocket-powered, ChatGPT-style UI
+═══════════════════════════════════════════════════════════ */
 
-// ════════════════════════════════════════════════════════
-//  STATE
-// ════════════════════════════════════════════════════════
+'use strict';
 
-const HISTORY_KEY = 'codexmc_history_v2';
+// ─── State ────────────────────────────────────────────────────
+let ws = null;
+let wsReady = false;
+let isGenerating = false;
+let currentJobId = null;
+let modHistory = [];
+let loaderVersions = { forge: [], fabric: [], neoforge: [] };
+let currentLogEl = null;
 
-const state = {
-  sessionId: generateUUID(),
-  ws: null,
-  wsReconnectTimer: null,
-  currentLoader: 'forge',
-  versionsCache: {},
-  isGenerating: false,
-  activeConsoleId: null,
-  thinkingLevel: 'medium',
-  sessions: loadSessions(),
-  activeSessionId: null,
-  searchQuery: ''
+const thinkingHints = {
+  low: '⚡ Low — 2K thinking tokens · ~30s',
+  medium: '🧠 Medium — 8K thinking tokens · ~60s',
+  high: '💡 High — 24K thinking tokens · ~120s',
 };
 
-// ════════════════════════════════════════════════════════
-//  UUID
-// ════════════════════════════════════════════════════════
-
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
-}
-
-// ════════════════════════════════════════════════════════
-//  SESSION STORAGE
-// ════════════════════════════════════════════════════════
-
-function loadSessions() {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw || raw === 'undefined' || raw === 'null') return [];
-    return JSON.parse(raw);
-  } catch (err) {
-    console.warn('⚠️ Corrupted session history — resetting storage', err);
-    localStorage.removeItem(HISTORY_KEY);
-    return [];
-  }
-}
-
-function saveSessions() {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.sessions || []));
-  } catch (err) {
-    console.error('❌ Failed to save sessions:', err);
-  }
-}
-
-// ════════════════════════════════════════════════════════
-//  SESSION HELPERS
-// ════════════════════════════════════════════════════════
-
-function createSession(prompt, loader, mcVersion, consoleId) {
-  const session = {
-    id: consoleId,
-    title: prompt.slice(0, 40),
-    prompt,
-    loader,
-    mcVersion,
-    icon: { forge: '⚙️', fabric: '🪡', neoforge: '✨' }[loader] || '🎮',
-    createdAt: Date.now(),
-    messages: [],
-    branches: [],
-    parentId: null
-  };
-
-  state.sessions.unshift(session);
-  if (state.sessions.length > 50) state.sessions = state.sessions.slice(0, 50);
-  state.activeSessionId = session.id;
-  saveSessions();
-  renderHistory();
-  return session;
-}
-
-function getSession(id) {
-  return state.sessions.find(s => s.id === id);
-}
-
-function updateSession(id, updater) {
-  const s = getSession(id);
-  if (!s) return;
-  updater(s);
-  saveSessions();
-}
-
-// ════════════════════════════════════════════════════════
-//  MESSAGE REGISTRY
-// ════════════════════════════════════════════════════════
-
-function addMessage(role, content, meta = {}) {
-  const session = getSession(state.activeSessionId);
-  if (!session) return;
-
-  session.messages.push({
-    id: generateUUID(),
-    role,
-    content,
-    meta,
-    timestamp: Date.now()
-  });
-
-  saveSessions();
-}
-
-// ════════════════════════════════════════════════════════
-//  DELETE / RENAME SESSIONS
-// ════════════════════════════════════════════════════════
-
-function deleteSession(id) {
-  state.sessions = state.sessions.filter(s => s.id !== id);
-  if (state.activeSessionId === id) {
-    state.activeSessionId = state.sessions[0]?.id || null;
-  }
-  saveSessions();
-  renderHistory();
-}
-
-function renameSession(id, newName) {
-  updateSession(id, s => s.title = newName);
-  renderHistory();
-}
-
-function renamePrompt(id) {
-  const session = getSession(id);
-  if (!session) return;
-  const newName = prompt('Rename session:', session.title);
-  if (newName && newName.trim()) renameSession(id, newName.trim());
-}
-
-// ════════════════════════════════════════════════════════
-//  HISTORY RENDER
-// ════════════════════════════════════════════════════════
-
-function renderHistory() {
-  const el = document.getElementById('chat-history');
-  if (!el) return;
-
-  el.innerHTML = '';
-
-  const sessions = state.sessions.filter(s =>
-    !state.searchQuery ||
-    s.title.toLowerCase().includes(state.searchQuery) ||
-    s.prompt.toLowerCase().includes(state.searchQuery)
-  );
-
-  if (!sessions.length) {
-    el.innerHTML = `<div class="history-empty">No sessions yet</div>`;
-    return;
-  }
-
-  sessions.forEach(session => {
-    const div = document.createElement('div');
-    div.className = 'history-item' + (session.id === state.activeSessionId ? ' active' : '');
-
-    div.innerHTML = `
-      <div class="history-item-icon">${session.icon || '🎮'}</div>
-      <div class="history-item-body">
-        <div class="history-item-title">${escapeHtml(session.title)}</div>
-        <div class="history-item-meta">${session.loader} · MC ${session.mcVersion}</div>
-        <div class="history-actions">
-          <button onclick="renamePrompt('${session.id}')">Rename</button>
-          <button onclick="deleteSession('${session.id}')">Delete</button>
-        </div>
-      </div>
-    `;
-
-    div.onclick = (e) => {
-      if (e.target.tagName === 'BUTTON') return;
-      openSession(session.id);
-    };
-
-    el.appendChild(div);
-  });
-}
-
-function openSession(id) {
-  state.activeSessionId = id;
-  const s = getSession(id);
-  if (!s) return;
-
-  const welcome = document.getElementById('welcome-state');
-  if (welcome) welcome.style.display = 'none';
-
-  const msgs = document.getElementById('messages');
-  if (msgs) msgs.innerHTML = '';
-
-  renderHistory();
-  renderMessages(id);
-}
-
-// ════════════════════════════════════════════════════════
-//  MESSAGE RENDERING
-// ════════════════════════════════════════════════════════
-
-function renderMessages(sessionId) {
-  const session = getSession(sessionId);
-  if (!session) return;
-
-  const msgs = document.getElementById('messages');
-  msgs.innerHTML = '';
-
-  session.messages.forEach(m => {
-    const div = document.createElement('div');
-    div.className = m.role === 'user' ? 'msg-user' : 'msg-ai';
-    div.innerHTML = `<div class="msg-content">${escapeHtml(m.content)}</div>`;
-    msgs.appendChild(div);
-  });
-
-  scrollBottom();
-}
-
-// ════════════════════════════════════════════════════════
-//  BACKGROUND CANVAS
-// ════════════════════════════════════════════════════════
-
-function initCanvas() {
-  const canvas = document.getElementById('bg-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  let W, H, particles;
-
-  function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
-
-  function makeParticles() {
-    particles = Array.from({ length: 60 }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.3,
-      vy: (Math.random() - 0.5) * 0.3,
-      r: Math.random() * 1.2 + 0.4,
-      alpha: Math.random() * 0.35 + 0.05
-    }));
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.025)';
-    ctx.lineWidth = 1;
-    const g = 64;
-    for (let x = 0; x < W; x += g) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += g) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-    const grad = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.55);
-    grad.addColorStop(0, 'rgba(74,222,128,0.05)');
-    grad.addColorStop(1, 'rgba(74,222,128,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    for (const p of particles) {
-      p.x += p.vx; p.y += p.vy;
-      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
-      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(74,222,128,${p.alpha})`;
-      ctx.fill();
-    }
-
-    for (let i = 0; i < particles.length; i++) {
-      for (let j = i + 1; j < particles.length; j++) {
-        const dx = particles[i].x - particles[j].x;
-        const dy = particles[i].y - particles[j].y;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < 100) {
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(particles[j].x, particles[j].y);
-          ctx.strokeStyle = `rgba(74,222,128,${0.05 * (1 - d / 100)})`;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-      }
-    }
-
-    requestAnimationFrame(draw);
-  }
-
-  resize();
-  makeParticles();
-  draw();
-  window.addEventListener('resize', () => { resize(); makeParticles(); });
-}
-
-// ════════════════════════════════════════════════════════
-//  NAVIGATION
-// ════════════════════════════════════════════════════════
-
+// ─── Page navigation ──────────────────────────────────────────
 function showApp() {
   document.getElementById('landing-page').style.display = 'none';
-  const app = document.getElementById('app-page');
-  app.style.display = 'flex';
-  app.classList.add('fade-in');
+  document.getElementById('app-page').style.display = 'flex';
   connectWS();
   loadVersions('forge');
 }
 
 function showLanding() {
   document.getElementById('app-page').style.display = 'none';
-  document.getElementById('landing-page').style.display = 'block';
-  if (state.ws) { state.ws.close(); state.ws = null; }
+  document.getElementById('landing-page').style.display = '';
+  if (ws) { ws.close(); ws = null; }
 }
 
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
-}
-
-function newMod() {
-  state.activeSessionId = null;
-  state.activeConsoleId = null;
-
-  const msgs = document.getElementById('messages');
-  if (msgs) msgs.innerHTML = '';
-
-  const welcome = document.getElementById('welcome-state');
-  if (welcome) welcome.style.display = '';
-
-  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
-
-  const inp = document.getElementById('prompt-input');
-  if (inp) { inp.value = ''; autoResize(inp); inp.focus(); }
-}
-
-// ════════════════════════════════════════════════════════
-//  WEBSOCKET
-// ════════════════════════════════════════════════════════
-
+// ─── WebSocket ────────────────────────────────────────────────
 function connectWS() {
-  if (state.ws && state.ws.readyState < 2) return;
-
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  state.ws = new WebSocket(`${proto}//${location.host}/ws/${state.sessionId}`);
+  const url = `${proto}//${location.host}/ws/generate`;
 
-  state.ws.onopen = () => {
-    setStatus('connected', 'Connected');
-    clearTimeout(state.wsReconnectTimer);
+  setWsStatus('connecting');
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    wsReady = true;
+    setWsStatus('connected');
   };
 
-  state.ws.onclose = () => {
-    setStatus('error', 'Disconnected');
-    state.wsReconnectTimer = setTimeout(connectWS, 3000);
-  };
-
-  state.ws.onerror = () => setStatus('error', 'Error');
-
-  state.ws.onmessage = (e) => {
+  ws.onmessage = (e) => {
     try {
-      const msg = JSON.parse(e.data);
-      handleWsMessage(msg);
+      handleWSMessage(JSON.parse(e.data));
     } catch {}
   };
+
+  ws.onclose = () => {
+    wsReady = false;
+    setWsStatus('error');
+    setTimeout(() => { if (document.getElementById('app-page').style.display !== 'none') connectWS(); }, 3000);
+  };
+
+  ws.onerror = () => {
+    wsReady = false;
+    setWsStatus('error');
+  };
 }
 
-function handleWsMessage(msg) {
-  const { type, message } = msg;
+function setWsStatus(state) {
+  const dot = document.getElementById('ws-dot');
+  const label = document.getElementById('ws-label');
+  dot.className = 'ws-dot ' + state;
+  label.textContent = { connected: 'Connected', connecting: 'Connecting...', error: 'Disconnected' }[state] || state;
+}
 
-  if (type === 'history' || type === 'connected') return;
+// ─── Handle WS messages ───────────────────────────────────────
+function handleWSMessage(msg) {
+  const { type, message, jobId, ...extra } = msg;
 
-  if (type === 'done') {
-    onGenerationDone(msg);
-    return;
-  }
   if (type === 'error') {
-    onGenerationError(message);
-    return;
-  }
-  if (type === 'thinking_start') {
-    showThinkingIndicator(msg.level);
-    return;
-  }
-  if (type === 'thinking_end') {
-    hideThinkingIndicator();
+    appendLog(type, message);
+    stopGenerating(false);
     return;
   }
 
-  appendConsoleOutput(type, message);
+  if (type === 'complete') {
+    appendLog('done', message);
+    showResult(jobId, extra);
+    stopGenerating(true);
+    return;
+  }
+
+  // Progress types: status, ai, file, files, build, success, warning, done
+  appendLog(type, message);
+
+  if (jobId && !currentJobId) {
+    currentJobId = jobId;
+  }
 }
 
-function setStatus(s, text) {
-  const dot = document.getElementById('status-dot');
-  const label = document.getElementById('status-text');
-  if (dot) dot.className = 'status-dot ' + s;
-  if (label) label.textContent = text;
+// ─── Log rendering ────────────────────────────────────────────
+function appendLog(type, message) {
+  if (!currentLogEl) return;
+  const body = currentLogEl.querySelector('.log-body');
+  const line = document.createElement('div');
+  line.className = `log-line type-${type}`;
+  line.textContent = message;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
 }
 
-// ════════════════════════════════════════════════════════
-//  VERSION LOADING
-// ════════════════════════════════════════════════════════
+function createLogBlock() {
+  const wrap = document.createElement('div');
+  wrap.className = 'log-block';
+  wrap.innerHTML = `
+    <div class="log-header">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+      Build Console
+    </div>
+    <div class="log-body"></div>
+  `;
+  currentLogEl = wrap;
+  return wrap;
+}
 
+// ─── Result card ──────────────────────────────────────────────
+function showResult(jobId, data) {
+  const { modId, modName, version, buildSuccess, files, jarUrl, sourceUrl } = data;
+
+  const card = document.createElement('div');
+  card.className = 'result-card';
+
+  const filesHtml = (files || []).map(f =>
+    `<div class="result-file-item">📄 ${f}</div>`
+  ).join('');
+
+  card.innerHTML = `
+    <div class="result-title">✅ ${modName || modId} v${version}</div>
+    <div class="result-meta">
+      ${modId} · ${document.getElementById('sel-loader').value} · ${document.getElementById('sel-version').value}
+      ${buildSuccess ? ' · <span style="color:#4ade80">Build successful</span>' : ' · <span style="color:#fb923c">Source only (compile locally)</span>'}
+    </div>
+    <div class="result-files">
+      <div class="result-files-title">Generated files (${(files || []).length})</div>
+      ${filesHtml}
+    </div>
+    <div class="result-downloads">
+      ${jarUrl ? `<a class="dl-btn dl-jar" href="${jarUrl}" download>⬇ Download JAR</a>` : ''}
+      ${sourceUrl ? `<a class="dl-btn dl-source" href="${sourceUrl}" download>⬇ Source ZIP</a>` : ''}
+    </div>
+  `;
+
+  // Append after log block
+  const aiWrap = document.getElementById('messages').lastElementChild;
+  if (aiWrap) {
+    const content = aiWrap.querySelector('.ai-content');
+    if (content) {
+      const indicator = content.querySelector('.thinking-indicator');
+      if (indicator) indicator.remove();
+      content.appendChild(card);
+    }
+  }
+
+  // Add to history
+  addHistory(modName || modId, jobId);
+}
+
+// ─── Send prompt ──────────────────────────────────────────────
+function sendPrompt() {
+  if (isGenerating || !wsReady) return;
+
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt || prompt.length < 5) {
+    flashInput();
+    return;
+  }
+
+  const loader = document.getElementById('sel-loader').value;
+  const version = document.getElementById('sel-version').value;
+  const thinking = document.getElementById('sel-thinking').value;
+
+  // Hide welcome if visible
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.style.display = 'none';
+
+  // User message
+  appendUserMessage(prompt);
+
+  // AI response shell
+  const aiWrap = document.createElement('div');
+  aiWrap.className = 'msg-wrap ai-wrap';
+  aiWrap.innerHTML = `
+    <div class="ai-avatar">
+      <svg viewBox="0 0 32 32" fill="none" width="18" height="18"><path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/></svg>
+    </div>
+    <div class="msg-content">
+      <div class="ai-content">
+        <div class="thinking-indicator">
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+          <span>Gemini is thinking...</span>
+        </div>
+      </div>
+    </div>
+  `;
+  const aiContent = aiWrap.querySelector('.ai-content');
+
+  // Create log block
+  const logBlock = createLogBlock();
+  aiContent.appendChild(logBlock);
+
+  document.getElementById('messages').appendChild(aiWrap);
+  scrollToBottom();
+
+  // Clear input
+  document.getElementById('prompt').value = '';
+  document.getElementById('prompt').style.height = '';
+
+  // Send via WS
+  currentJobId = null;
+  isGenerating = true;
+  document.getElementById('send-btn').disabled = true;
+
+  // Find loader version
+  let loaderVersion = '';
+  const versionsList = loaderVersions[loader] || [];
+  const found = versionsList.find(v => (v.mc || v) === version);
+  if (found) {
+    loaderVersion = found.forge || found.loader || found.neoforge || '';
+  }
+
+  ws.send(JSON.stringify({
+    description: prompt,
+    loader,
+    mcVersion: version,
+    loaderVersion,
+    thinkingLevel: thinking,
+  }));
+}
+
+function appendUserMessage(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap user-wrap';
+  wrap.innerHTML = `<div class="msg-content"><div class="user-bubble">${escapeHtml(text)}</div></div>`;
+  document.getElementById('messages').appendChild(wrap);
+  scrollToBottom();
+}
+
+function stopGenerating(success) {
+  isGenerating = false;
+  currentLogEl = null;
+  document.getElementById('send-btn').disabled = false;
+  scrollToBottom();
+}
+
+function flashInput() {
+  const box = document.querySelector('.input-box');
+  box.style.borderColor = '#f87171';
+  setTimeout(() => box.style.borderColor = '', 1000);
+}
+
+// ─── Version loading ──────────────────────────────────────────
 async function loadVersions(loader) {
-  const select = document.getElementById('version-select');
-  if (!select) return;
-
-  if (state.versionsCache[loader]) {
-    populateVersions(loader, state.versionsCache[loader]);
-    return;
-  }
-
-  select.innerHTML = '<option value="">Loading...</option>';
+  const sel = document.getElementById('sel-version');
+  sel.innerHTML = '<option>Loading...</option>';
 
   try {
     const res = await fetch(`/api/versions/${loader}`);
     const data = await res.json();
-    state.versionsCache[loader] = data.versions;
-    populateVersions(loader, data.versions);
-  } catch {
-    select.innerHTML = '<option value="">Failed to load</option>';
+    const versions = data.versions || [];
+    loaderVersions[loader] = versions;
+
+    sel.innerHTML = versions.map((v, i) => {
+      const mc = v.mc || v;
+      return `<option value="${mc}"${i === 0 ? ' selected' : ''}>${mc}</option>`;
+    }).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="1.20.1">1.20.1</option>';
   }
-}
-
-function populateVersions(loader, versions) {
-  const select = document.getElementById('version-select');
-  select.innerHTML = '';
-
-  if (!versions || !versions.length) {
-    select.innerHTML = '<option value="">No versions</option>';
-    return;
-  }
-
-  versions.forEach((v, i) => {
-    const lv = v.recommended || v.loaderVersion || v.forgeVersions?.[0] || v.neoforgeVersions?.[0] || '';
-    const opt = document.createElement('option');
-    opt.value = JSON.stringify({ mcVersion: v.mcVersion, loaderVersion: lv });
-    opt.textContent = `MC ${v.mcVersion}`;
-    if (i === 0) opt.selected = true;
-    select.appendChild(opt);
-  });
 }
 
 function onLoaderChange() {
-  const loader = document.getElementById('loader-select').value;
-  state.currentLoader = loader;
+  const loader = document.getElementById('sel-loader').value;
   loadVersions(loader);
 }
 
-function getSelectedVersion() {
-  const v = document.getElementById('version-select')?.value;
-  if (!v) return null;
-  try { return JSON.parse(v); } catch { return null; }
+// ─── Sidebar ──────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
 }
 
-// ════════════════════════════════════════════════════════
-//  THINKING LEVEL
-// ════════════════════════════════════════════════════════
+function newMod() {
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('welcome').style.display = '';
+  document.getElementById('prompt').value = '';
+  currentJobId = null;
+  currentLogEl = null;
+  isGenerating = false;
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('app-header-title').textContent = 'CodexMC';
 
-function onThinkingChange() {
-  const level = document.getElementById('thinking-select')?.value || 'medium';
-  state.thinkingLevel = level;
+  // Deactivate history items
+  document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
 
-  const hint = document.getElementById('thinking-hint');
-  if (!hint) return;
-
-  const labels = {
-    low:    '⚡ Low thinking — Fast generation mode',
-    medium: '🧩 Medium thinking — Extended reasoning enabled',
-    high:   '🧠 High thinking — Deep chain-of-thought active',
-  };
-
-  hint.textContent = labels[level] || labels.medium;
-  hint.className = `thinking-hint ${level}`;
+  // Close sidebar on mobile
+  document.getElementById('sidebar').classList.remove('open');
 }
 
-// ════════════════════════════════════════════════════════
-//  THINKING INDICATOR (UI)
-// ════════════════════════════════════════════════════════
-
-function showThinkingIndicator(level) {
-  if (!state.activeConsoleId) return;
-  const output = document.getElementById('output-' + state.activeConsoleId);
-  if (!output) return;
-
-  const div = document.createElement('div');
-  div.id = 'thinking-indicator-' + state.activeConsoleId;
-  div.className = 'thinking-indicator';
-  div.innerHTML = `
-    <div class="thinking-spinner"></div>
-    <span class="thinking-text">🧠 AI is reasoning deeply... (${level} thinking)</span>
-  `;
-  output.parentElement.insertBefore(div, output);
+function addHistory(name, jobId) {
+  modHistory.unshift({ name, jobId });
+  renderHistory();
 }
 
-function hideThinkingIndicator() {
-  if (!state.activeConsoleId) return;
-  const el = document.getElementById('thinking-indicator-' + state.activeConsoleId);
-  if (el) el.remove();
-}
-
-// ════════════════════════════════════════════════════════
-//  MOD GENERATION
-// ════════════════════════════════════════════════════════
-
-async function sendPrompt() {
-  if (state.isGenerating) return;
-
-  const promptInput = document.getElementById('prompt-input');
-  const prompt = promptInput.value.trim();
-  if (!prompt) { promptInput.focus(); return; }
-
-  const loader = document.getElementById('loader-select').value;
-  const thinkingLevel = document.getElementById('thinking-select').value;
-  const versionData = getSelectedVersion();
-
-  if (!versionData) {
-    alert('Please wait for versions to load.');
+function renderHistory() {
+  const container = document.getElementById('sidebar-history');
+  if (modHistory.length === 0) {
+    container.innerHTML = '<div class="sb-empty">No mods yet</div>';
     return;
   }
-
-  const { mcVersion, loaderVersion } = versionData;
-
-  const welcome = document.getElementById('welcome-state');
-  if (welcome) welcome.style.display = 'none';
-
-  addUserMessage(prompt, loader, mcVersion, thinkingLevel);
-
-  promptInput.value = '';
-  autoResize(promptInput);
-
-  setGenerating(true);
-
-  const consoleId = 'c-' + Date.now();
-  addConsoleMessage(consoleId, loader, mcVersion, thinkingLevel);
-
-  if (!state.activeSessionId) {
-    createSession(prompt, loader, mcVersion, consoleId);
-  } else {
-    addMessage('user', prompt, { loader, mcVersion, thinkingLevel });
-  }
-
-  if (!state.ws || state.ws.readyState > 1) connectWS();
-
-  try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        loader,
-        mcVersion,
-        loaderVersion,
-        thinkingLevel,
-        sessionId: state.sessionId,
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Server error');
-    }
-
-    updateConsoleStatus(consoleId, 'running');
-
-  } catch (err) {
-    appendConsoleOutput('error', `Failed to start: ${err.message}`);
-    setGenerating(false);
-    updateConsoleStatus(consoleId, 'error');
-  }
-}
-
-// ════════════════════════════════════════════════════════
-//  MESSAGE RENDERERS
-// ════════════════════════════════════════════════════════
-
-function addUserMessage(prompt, loader, mcVersion, thinking) {
-  const msgs = document.getElementById('messages');
-  const loaderLabel = { forge: '⚙️ Forge', fabric: '🪡 Fabric', neoforge: '✨ NeoForge' }[loader] || loader;
-  const thinkLabel = { low: '⚡ Low', medium: '🧩 Medium', high: '🧠 High' }[thinking] || thinking;
-
-  const div = document.createElement('div');
-  div.className = 'msg-user';
-  div.innerHTML = `
-    <div class="msg-user-bubble">
-      <div class="msg-user-meta">${loaderLabel} · MC ${mcVersion} · ${thinkLabel} thinking</div>
-      ${escapeHtml(prompt)}
-    </div>`;
-  msgs.appendChild(div);
-  scrollBottom();
-}
-
-function addConsoleMessage(consoleId, loader, mcVersion, thinking) {
-  const msgs = document.getElementById('messages');
-  state.activeConsoleId = consoleId;
-
-  const thinkBadge = {
-    low:    '<span class="thinking-badge-inline thinking-low-badge">⚡ LOW</span>',
-    medium: '<span class="thinking-badge-inline thinking-med-badge">🧩 MED</span>',
-    high:   '<span class="thinking-badge-inline thinking-high-badge">🧠 HIGH</span>',
-  }[thinking] || '';
-
-  const div = document.createElement('div');
-  div.className = 'msg-ai';
-  div.id = 'msg-' + consoleId;
-  div.innerHTML = `
-    <div class="msg-ai-header">
-      <div class="ai-avatar">AI</div>
-      <div class="ai-name">CodexMC Generator ${thinkBadge}</div>
-      <div class="ai-status" id="ai-status-${consoleId}">
-        <div class="generating-dots"><span></span><span></span><span></span></div>
-      </div>
+  container.innerHTML = modHistory.slice(0, 20).map((item, i) => `
+    <div class="sb-item${i === 0 ? ' active' : ''}" onclick="loadHistoryItem(${i})">
+      ⚡ ${escapeHtml(item.name)}
     </div>
-    <div class="console-card">
-      <div class="console-titlebar">
-        <div class="console-dots">
-          <div class="console-dot" style="background:#ff5f57"></div>
-          <div class="console-dot" style="background:#ffbd2e"></div>
-          <div class="console-dot" style="background:#28c840"></div>
-        </div>
-        <span class="console-label">codexmc — ${loader} MC ${mcVersion}</span>
-        <span class="console-status running" id="status-${consoleId}">⏳ Generating</span>
-      </div>
-      <div class="console-output" id="output-${consoleId}">
-        <span class="console-line type-info">Connecting to AI...</span>
-      </div>
-    </div>
-    <div id="download-area-${consoleId}"></div>
-  `;
-  msgs.appendChild(div);
-  scrollBottom();
+  `).join('');
 }
 
-function appendConsoleOutput(type, message) {
-  if (!state.activeConsoleId) return;
-  const output = document.getElementById('output-' + state.activeConsoleId);
-  if (!output) return;
-
-  const waiting = output.querySelector('.type-info');
-  if (waiting && waiting.textContent === 'Connecting to AI...') waiting.remove();
-
-  if (!message) return;
-
-  String(message).split('\n').forEach(line => {
-    if (!line.trim()) return;
-    const span = document.createElement('span');
-    span.className = `console-line type-${type}`;
-    span.textContent = line;
-    output.appendChild(span);
-    output.appendChild(document.createTextNode('\n'));
+function loadHistoryItem(index) {
+  document.querySelectorAll('.sb-item').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
   });
-
-  output.scrollTop = output.scrollHeight;
-  scrollBottom();
+  document.getElementById('sidebar').classList.remove('open');
 }
 
-function updateConsoleStatus(consoleId, status) {
-  const el = document.getElementById('status-' + consoleId);
-  if (!el) return;
-  el.className = 'console-status ' + status;
-  el.textContent =
-    status === 'running' ? '⏳ Generating' :
-    status === 'done'    ? '✅ Complete'   :
-    status === 'error'   ? '❌ Error'      : status;
-}
-
-// ════════════════════════════════════════════════════════
-//  GENERATION DONE → SHOW DOWNLOAD CARDS
-// ════════════════════════════════════════════════════════
-
-function onGenerationDone(result) {
-  const { modName, workId, buildSuccess, downloads, zipName } = result;
-
-  hideThinkingIndicator();
-  updateConsoleStatus(state.activeConsoleId, 'done');
-
-  const statusEl = document.getElementById('ai-status-' + state.activeConsoleId);
-  if (statusEl) statusEl.innerHTML = `<span style="color:var(--green);font-size:12px;font-family:var(--font-mono)">✅ Done</span>`;
-
-  const dlArea = document.getElementById('download-area-' + state.activeConsoleId);
-  if (!dlArea) { setGenerating(false); return; }
-
-  let jarUrl = downloads?.jar || null;
-  let sourceUrl = downloads?.source || null;
-
-  if (zipName && !sourceUrl) sourceUrl = `/api/download/${encodeURIComponent(zipName)}`;
-  if (workId) {
-    jarUrl = jarUrl || `/download/jar/${workId}`;
-    sourceUrl = sourceUrl || `/download/source/${workId}`;
-  }
-
-  const jarHtml = jarUrl
-    ? `<a class="dl-btn dl-btn-jar" href="${escapeHtml(jarUrl)}" download>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download .jar
-      </a>`
-    : `<span class="dl-btn dl-btn-source" style="opacity:0.5;cursor:not-allowed">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        Build failed
-      </span>`;
-
-  const sourceHtml = sourceUrl
-    ? `<a class="dl-btn dl-btn-source" href="${escapeHtml(sourceUrl)}" download>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download Source (.zip)
-      </a>`
-    : '';
-
-  dlArea.innerHTML = `
-    <div class="download-area">
-      <div class="download-card">
-        <div class="download-card-header">
-          <div class="download-card-title">🎉 ${escapeHtml(modName || 'Your Mod')} is ready!</div>
-          <div class="download-card-meta">${buildSuccess ? '✅ Compiled JAR + full source ready' : '⚠️ JAR build failed — source files ready'}</div>
-        </div>
-        <div class="download-buttons">
-          ${jarHtml}
-          ${sourceHtml}
-        </div>
-      </div>
-    </div>`;
-
-  addMessage('ai', modName ? `${modName} generated successfully` : 'Generation complete', result);
-
-  setGenerating(false);
-  scrollBottom();
-
-  if (modName) {
-    document.getElementById('topbar-title').textContent = modName;
-  }
-}
-
-function onGenerationError(message) {
-  hideThinkingIndicator();
-  updateConsoleStatus(state.activeConsoleId, 'error');
-  appendConsoleOutput('error', `❌ ${message}`);
-
-  const statusEl = document.getElementById('ai-status-' + state.activeConsoleId);
-  if (statusEl) statusEl.innerHTML = `<span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">❌ Failed</span>`;
-
-  addMessage('ai', `Error: ${message}`);
-  setGenerating(false);
-}
-
-function setGenerating(val) {
-  state.isGenerating = val;
-  const btn = document.getElementById('send-btn');
-  const inp = document.getElementById('prompt-input');
-  if (btn) btn.disabled = val;
-  if (inp) inp.disabled = val;
-}
-
-// ════════════════════════════════════════════════════════
-//  UTILITIES
-// ════════════════════════════════════════════════════════
-
-function scrollBottom() {
-  const area = document.getElementById('conversation-area');
-  if (area) area.scrollTop = area.scrollHeight;
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function handleInputKey(e) {
+// ─── Keyboard / input ─────────────────────────────────────────
+function handleKey(e) {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     sendPrompt();
   }
 }
 
-function autoResize(el) {
-  el.style.height = 'auto';
+function autoGrow(el) {
+  el.style.height = '';
   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
 
-function useExample(btn) {
-  const inp = document.getElementById('prompt-input');
-  inp.value = btn.textContent;
-  autoResize(inp);
-  inp.focus();
+function fillExample(btn) {
+  document.getElementById('prompt').value = btn.textContent.trim();
+  document.getElementById('prompt').focus();
 }
 
-// ════════════════════════════════════════════════════════
-//  LANDING TERMINAL ANIMATION
-// ════════════════════════════════════════════════════════
-
-function animateTerminal() {
-  const body = document.getElementById('terminal-preview-body');
-  if (!body) return;
-
-  const lines = body.querySelectorAll('.t-line');
-  lines.forEach(l => { l.style.opacity = '0'; });
-  const cursor = body.querySelector('.t-cursor');
-  if (cursor) cursor.style.display = 'none';
-
-  let i = 0;
-  function next() {
-    if (i < lines.length) {
-      lines[i].style.opacity = '1';
-      lines[i].style.transition = 'opacity 0.1s';
-      i++;
-      const delay = i === 1 ? 400 : i < 4 ? 700 : i < 8 ? 450 : 900;
-      setTimeout(next, delay);
-    } else {
-      if (cursor) cursor.style.display = 'inline-block';
-    }
-  }
-  setTimeout(next, 800);
-}
-
-// ════════════════════════════════════════════════════════
-//  INIT
-// ════════════════════════════════════════════════════════
-
+// ─── Thinking hint ────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  initCanvas();
-  animateTerminal();
-
-  const thinkingSelect = document.getElementById('thinking-select');
-  if (thinkingSelect) thinkingSelect.addEventListener('change', onThinkingChange);
-
-  const loaderSelect = document.getElementById('loader-select');
-  if (loaderSelect) loaderSelect.addEventListener('change', onLoaderChange);
-
-  renderHistory();
+  const sel = document.getElementById('sel-thinking');
+  if (sel) {
+    sel.addEventListener('change', () => {
+      document.getElementById('thinking-hint').textContent = thinkingHints[sel.value] || '';
+    });
+  }
 });
+
+// ─── Utils ───────────────────────────────────────────────────
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function scrollToBottom() {
+  const convo = document.getElementById('convo');
+  if (convo) convo.scrollTop = convo.scrollHeight;
+}

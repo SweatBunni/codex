@@ -6,299 +6,281 @@
   <title>CodexMC — AI Minecraft Mod Generator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<!-- ══════════════════════ LANDING PAGE ══════════════════════ -->
+<!-- ═══════════════════════ LANDING PAGE ═══════════════════════ -->
 <div id="landing-page">
-  <canvas id="bg-canvas"></canvas>
 
   <nav class="nav">
-    <div class="nav-brand">
-      <div class="nav-logo-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      </div>
-      <span class="nav-brand-text">CodexMC</span>
+    <div class="nav-logo">
+      <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="8" fill="#10a37f"/>
+        <path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/>
+      </svg>
+      <span>CodexMC</span>
     </div>
     <div class="nav-links">
       <a href="#features" class="nav-link">Features</a>
-      <a href="#loaders" class="nav-link">Loaders</a>
-      <button class="btn-nav-cta" onclick="showApp()">
-        Launch App
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </button>
+      <a href="#models" class="nav-link">AI Model</a>
+      <button class="nav-cta" onclick="showApp()">Try It Free →</button>
     </div>
   </nav>
 
+  <!-- Hero -->
   <section class="hero">
-    <div class="hero-badge">
-      <span class="badge-pulse"></span>
-      Mistral 7b · Advanced Reasoning
+    <div class="hero-eyebrow">
+      <span class="hero-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+        Powered by Google Gemini 2.5 Flash
+      </span>
     </div>
 
-    <h1 class="hero-title">
-      Build Minecraft Mods<br>
-      <span class="hero-accent">With AI Intelligence</span>
+    <h1 class="hero-h1">
+      Generate Minecraft<br>
+      <span class="hero-accent">mods with AI</span>
     </h1>
 
-    <p class="hero-desc">
-      Describe your idea. CodexMC generates the code, compiles it into a real
-      <strong>.jar</strong> file, and packages the full source — ready in minutes.
+    <p class="hero-sub">
+      Describe your idea in plain English. CodexMC writes the Java code, 
+      compiles it into a real <code>.jar</code>, and gives you the full source — 
+      ready to drop into your mods folder.
     </p>
 
-    <div class="hero-ctas">
-      <button class="btn-primary" onclick="showApp()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21"/></svg>
-        Start Generating
+    <div class="hero-actions">
+      <button class="btn-start" onclick="showApp()">
+        Start generating
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </button>
-      <a href="#features" class="btn-secondary">Explore Features</a>
     </div>
 
-    <div class="hero-pills">
-      <div class="pill"><span class="pill-dot"></span>Forge · Fabric · NeoForge</div>
-      <div class="pill"><span class="pill-dot"></span>JAR + Source ZIP</div>
-      <div class="pill"><span class="pill-dot"></span>Live Build Console</div>
-      <div class="pill"><span class="pill-dot"></span>Advanced AI Reasoning</div>
+    <div class="hero-loaders">
+      <span class="loader-pill loader-forge">⚙️ Forge</span>
+      <span class="loader-pill loader-fabric">🪡 Fabric</span>
+      <span class="loader-pill loader-neo">✨ NeoForge</span>
     </div>
   </section>
 
-  <!-- Terminal preview -->
-  <div class="terminal-preview">
-    <div class="terminal-titlebar">
-      <div class="terminal-dots">
-        <div class="t-dot" style="background:#ff5f57"></div>
-        <div class="t-dot" style="background:#ffbd2e"></div>
-        <div class="t-dot" style="background:#28c840"></div>
+  <!-- Preview window -->
+  <div class="preview-wrap">
+    <div class="preview-chrome">
+      <div class="chrome-dots">
+        <span style="background:#ff5f57"></span>
+        <span style="background:#ffbd2e"></span>
+        <span style="background:#28c841"></span>
       </div>
-      <span class="terminal-title">codexmc — mod generator</span>
+      <span class="chrome-title">CodexMC · Mod Generator</span>
+      <div class="chrome-actions"></div>
     </div>
-    <div class="terminal-body" id="terminal-preview-body">
-      <div class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">codexmc generate "lightning sword" --loader forge --mc 1.20.1 --think high</span></div>
-      <div class="t-line t-info">? High thinking mode: Mistral 7b reasoning...</div>
-      <div class="t-line t-ai">✨ Analyzing mod requirements deeply...</div>
-      <div class="t-line t-ai">🤖 Generating LightningSword mod with advanced reasoning...</div>
-      <div class="t-line t-file">  📄 LightningSwordMod.java</div>
-      <div class="t-line t-file">  📄 item/LightningSword.java</div>
-      <div class="t-line t-file">  📄 build.gradle · mods.toml · pack.mcmeta</div>
-      <div class="t-line t-build">🏗️  ./gradlew build --no-daemon</div>
-      <div class="t-line t-build">> Task :compileJava SUCCESS</div>
-      <div class="t-line t-build">> Task :jar SUCCESS</div>
-      <div class="t-line t-success">✅ BUILD SUCCESSFUL in 52s</div>
-      <div class="t-line t-success">📦 lightningsword-1.0.0-forge-1.20.1.jar  ↓ Download JAR</div>
-      <div class="t-line t-success">🗜️  lightningsword-source.zip              ↓ Download Source</div>
-      <div class="t-cursor">▋</div>
+    <div class="preview-body">
+      <div class="preview-sidebar">
+        <div class="ps-logo">
+          <svg viewBox="0 0 32 32" fill="none" width="22" height="22"><rect width="32" height="32" rx="8" fill="#10a37f"/><path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/></svg>
+          CodexMC
+        </div>
+        <button class="ps-new">＋ New mod</button>
+        <div class="ps-section">History</div>
+        <div class="ps-item active">Lightning Sword</div>
+        <div class="ps-item">Jetpack mod</div>
+        <div class="ps-item">Custom ore gen</div>
+      </div>
+      <div class="preview-main">
+        <div class="pm-msg pm-user">A sword that strikes lightning on hit</div>
+        <div class="pm-msg pm-ai">
+          <div class="pm-ai-icon">
+            <svg viewBox="0 0 32 32" fill="none" width="20" height="20"><rect width="32" height="32" rx="8" fill="#10a37f"/><path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/></svg>
+          </div>
+          <div class="pm-ai-content">
+            <div class="pm-status">✅ Gemini generated 7 files</div>
+            <div class="pm-files">
+              <div class="pm-file">📄 LightningSwordMod.java</div>
+              <div class="pm-file">📄 item/LightningSword.java</div>
+              <div class="pm-file">📄 build.gradle</div>
+            </div>
+            <div class="pm-build">🏗️ BUILD SUCCESSFUL in 48s</div>
+            <div class="pm-dl">
+              <button class="pm-btn">⬇ Download JAR</button>
+              <button class="pm-btn">⬇ Source ZIP</button>
+            </div>
+          </div>
+        </div>
+        <div class="pm-input">
+          <input type="text" placeholder="Describe your next mod idea..." readonly />
+          <button>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- Features -->
-  <section id="features" class="features-section">
-    <div class="section-eyebrow">What You Get</div>
-    <h2 class="section-title">Everything to ship your mod</h2>
-    <div class="features-grid">
-      <div class="feat-card">
-        <div class="feat-icon feat-icon-blue">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        </div>
-        <h3>Advanced AI Reasoning</h3>
-        <p>Choose Low, Medium, or High thinking depth. Higher modes use extended chain-of-thought for more accurate, complete mod code.</p>
+  <section id="features" class="features">
+    <p class="section-label">What you get</p>
+    <h2 class="section-h2">Everything to ship your mod</h2>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-num">01</div>
+        <h3>Gemini 2.5 Flash</h3>
+        <p>Google's best free Java coding model. Extended chain-of-thought reasoning for accurate, complete mod code.</p>
       </div>
-      <div class="feat-card">
-        <div class="feat-icon feat-icon-green">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M12 12h.01M8 12h.01M16 12h.01"/></svg>
-        </div>
-        <h3>Compiled JAR Download</h3>
-        <p>The server builds your project server-side with the correct JDK. Download a real .jar file — drop it straight into your mods folder.</p>
+      <div class="feat">
+        <div class="feat-num">02</div>
+        <h3>Real .jar output</h3>
+        <p>Server-side compilation with the correct JDK version. Download a genuine jar — drop it right into your mods folder.</p>
       </div>
-      <div class="feat-card">
-        <div class="feat-icon feat-icon-orange">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </div>
-        <h3>Full Source ZIP</h3>
-        <p>Every file — Java classes, build.gradle, gradlew, resources — packed into a zip. Open in IntelliJ or Eclipse instantly.</p>
+      <div class="feat">
+        <div class="feat-num">03</div>
+        <h3>Full source ZIP</h3>
+        <p>Every file: Java classes, build.gradle, gradlew, resources. Open in IntelliJ or Eclipse immediately.</p>
       </div>
-      <div class="feat-card">
-        <div class="feat-icon feat-icon-purple">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        </div>
-        <h3>Live Build Console</h3>
-        <p>Watch every step in real time: file creation, Gradle compilation, errors — all streamed to your browser via WebSocket.</p>
+      <div class="feat">
+        <div class="feat-num">04</div>
+        <h3>Live build console</h3>
+        <p>Watch every step stream in real time: AI thinking, file creation, Gradle compilation — all via WebSocket.</p>
       </div>
-      <div class="feat-card">
-        <div class="feat-icon feat-icon-cyan">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </div>
-        <h3>Multi-Loader Support</h3>
-        <p>Forge, Fabric, and NeoForge — each with correct build configs, dependency versions, and API wiring per MC version.</p>
+      <div class="feat">
+        <div class="feat-num">05</div>
+        <h3>Three loaders</h3>
+        <p>Forge, Fabric, and NeoForge — correct build configs, APIs, and dependency versions for each MC version.</p>
       </div>
-      <div class="feat-card">
-        <div class="feat-icon feat-icon-yellow">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        </div>
-        <h3>Live Version Data</h3>
-        <p>MC version lists fetched live from Forge, Fabric, and NeoForge APIs. Always shows the latest supported versions.</p>
+      <div class="feat">
+        <div class="feat-num">06</div>
+        <h3>Thinking levels</h3>
+        <p>Low for quick items, Medium for complex mods, High for advanced systems. More budget = better code.</p>
       </div>
     </div>
   </section>
 
-  <!-- Thinking Levels -->
-  <section class="thinking-section">
-    <div class="section-eyebrow">AI Reasoning</div>
-    <h2 class="section-title">Advanced thinking modes</h2>
-    <p class="section-desc">Higher thinking depth uses more compute for better reasoning, edge case handling, and overall code quality.</p>
-    <div class="thinking-grid">
-      <div class="thinking-card thinking-low">
-        <div class="thinking-header">
-          <div class="thinking-badge">LOW</div>
-          <div class="thinking-dots">
-            <div class="td active"></div><div class="td"></div><div class="td"></div>
+  <!-- Model section -->
+  <section id="models" class="model-section">
+    <p class="section-label">The AI</p>
+    <h2 class="section-h2">Why Gemini 2.5 Flash?</h2>
+    <div class="model-card">
+      <div class="model-left">
+        <div class="model-badge">FREE TIER</div>
+        <h3>Google Gemini 2.5 Flash</h3>
+        <p>The best free AI model for Java code generation. Features a massive context window, extended thinking, and state-of-the-art code accuracy — outperforming paid alternatives for structured code tasks.</p>
+        <div class="model-stats">
+          <div class="stat"><span class="stat-num">1M</span><span class="stat-label">context tokens</span></div>
+          <div class="stat"><span class="stat-num">32K</span><span class="stat-label">output tokens</span></div>
+          <div class="stat"><span class="stat-num">∞</span><span class="stat-label">thinking budget</span></div>
+        </div>
+      </div>
+      <div class="model-right">
+        <div class="thinking-levels">
+          <div class="tl tl-low">
+            <div class="tl-header">
+              <span class="tl-badge">LOW</span>
+              <span class="tl-time">~30s</span>
+            </div>
+            <p>2K thinking tokens. Great for simple items, blocks, and basic features.</p>
+          </div>
+          <div class="tl tl-med">
+            <div class="tl-header">
+              <span class="tl-badge">MEDIUM</span>
+              <span class="tl-time">~60s</span>
+            </div>
+            <p>8K thinking tokens. Multi-file mods, custom mechanics, recipes, world gen.</p>
+          </div>
+          <div class="tl tl-high">
+            <div class="tl-header">
+              <span class="tl-badge">HIGH</span>
+              <span class="tl-time">~120s</span>
+            </div>
+            <p>24K thinking tokens. Full chain-of-thought for advanced systems and custom dimensions.</p>
           </div>
         </div>
-        <h3>Quick Generate</h3>
-        <p>Fast generation for simple mods. Good for items, blocks, basic functionality. Minimal reasoning overhead.</p>
-        <div class="thinking-tags"><span>~30s</span><span>Simple mods</span><span>Fast</span></div>
-      </div>
-      <div class="thinking-card thinking-med">
-        <div class="thinking-header">
-          <div class="thinking-badge">MEDIUM</div>
-          <div class="thinking-dots">
-            <div class="td active"></div><div class="td active"></div><div class="td"></div>
-          </div>
-        </div>
-        <h3>Balanced</h3>
-        <p>Extended reasoning for multi-file mods with custom mechanics, recipes, world gen, or complex interactions.</p>
-        <div class="thinking-tags"><span>~60s</span><span>Complex mods</span><span>Balanced</span></div>
-      </div>
-      <div class="thinking-card thinking-high">
-        <div class="thinking-header">
-          <div class="thinking-badge">HIGH</div>
-          <div class="thinking-dots">
-            <div class="td active"></div><div class="td active"></div><div class="td active"></div>
-          </div>
-        </div>
-        <h3>Deep Reasoning</h3>
-        <p>Full chain-of-thought for the most accurate results. Best for advanced mods, custom dimensions, and complete systems.</p>
-        <div class="thinking-tags"><span>~120s</span><span>Advanced mods</span><span>Best quality</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Loaders -->
-  <section id="loaders" class="loaders-section">
-    <div class="section-eyebrow">Platforms</div>
-    <h2 class="section-title">Pick your mod loader</h2>
-    <div class="loaders-grid">
-      <div class="loader-card">
-        <div class="loader-icon loader-forge-color">⚙️</div>
-        <div class="loader-badge-text">FORGE</div>
-        <p>The original Minecraft mod loader. Huge ecosystem, full support from 1.7 to latest. ForgeGradle, Mixins, Events API.</p>
-        <div class="loader-since">Available since MC 1.1</div>
-      </div>
-      <div class="loader-card">
-        <div class="loader-icon loader-fabric-color">🪡</div>
-        <div class="loader-badge-text">FABRIC</div>
-        <p>Lightweight and fast. The modern choice for performance mods. Loom build system, Yarn mappings, Fabric API.</p>
-        <div class="loader-since">Available since MC 1.14</div>
-      </div>
-      <div class="loader-card">
-        <div class="loader-icon loader-neo-color">✨</div>
-        <div class="loader-badge-text">NEOFORGE</div>
-        <p>The spiritual successor to Forge. Modern Java, better performance, active team. NeoGradle + ModDevGradle.</p>
-        <div class="loader-since">Available since MC 1.20.2</div>
       </div>
     </div>
   </section>
 
   <!-- CTA -->
-  <section class="cta-section">
-    <h2>Ready to forge your first mod?</h2>
-    <p>No Java expertise needed. Just describe what you want to build.</p>
-    <button class="btn-primary btn-large" onclick="showApp()">
-      Open CodexMC
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+  <section class="landing-cta">
+    <h2>Ready to build?</h2>
+    <p>No Java expertise required. Just describe what you want.</p>
+    <button class="btn-start" onclick="showApp()">
+      Open CodexMC free
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </button>
   </section>
 
   <footer class="footer">
-    <div class="footer-brand">
-      <div class="nav-logo-icon small">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      </div>
+    <div class="footer-logo">
+      <svg viewBox="0 0 32 32" fill="none" width="20" height="20"><rect width="32" height="32" rx="8" fill="#10a37f"/><path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/></svg>
       CodexMC
     </div>
-    <p>Powered by Mistral 7b via OpenRouter · Minecraft Mod AI Platform</p>
+    <p>Powered by Google Gemini 2.5 Flash · Free tier · No account required</p>
   </footer>
 </div>
 
-<!-- ══════════════════════ APP PAGE ══════════════════════ -->
+<!-- ═══════════════════════ APP PAGE ═══════════════════════ -->
 <div id="app-page" style="display:none">
 
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-top">
-      <button class="back-btn" onclick="showLanding()" title="Back">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      </button>
-      <div class="sidebar-brand">
-        <div class="nav-logo-icon small">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        </div>
+    <div class="sb-head">
+      <div class="sb-logo">
+        <svg viewBox="0 0 32 32" fill="none" width="24" height="24"><rect width="32" height="32" rx="8" fill="#10a37f"/><path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/></svg>
         <span>CodexMC</span>
       </div>
     </div>
 
-   <button class="new-mod-btn" onclick="newMod()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New Mod
+    <button class="sb-new" onclick="newMod()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New mod
     </button>
 
-    <div class="sidebar-label">History</div>
-    <div class="chat-history" id="chat-history">
-      <div class="history-empty">No mods yet</div>
+    <div class="sb-section">Recent</div>
+    <div id="sidebar-history" class="sb-history">
+      <div class="sb-empty">No mods yet</div>
     </div>
 
-    <div class="sidebar-foot">
-      <div class="status-row">
-        <span class="status-dot" id="status-dot"></span>
-        <span id="status-text" class="status-label">Connecting...</span>
+    <div class="sb-footer">
+      <div class="sb-model">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+        Gemini 2.5 Flash
       </div>
-      <div class="model-tag">mistral  R1</div>
+      <button class="sb-back" onclick="showLanding()">← Back to home</button>
     </div>
   </aside>
 
   <!-- Main -->
-  <main class="app-main">
+  <main class="app-main" id="app-main">
 
-    <!-- Topbar -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <button class="topbar-toggle" onclick="toggleSidebar()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        </button>
-        <div class="topbar-title" id="topbar-title">Mod Generator</div>
-      </div>
-      <div class="topbar-right">
-        <div class="jdk-pill">JDK 8 / 17 / 21 / 25</div>
+    <!-- Mobile header -->
+    <header class="app-header">
+      <button class="mob-menu" onclick="toggleSidebar()" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <span class="app-header-title" id="app-header-title">CodexMC</span>
+      <div class="ws-status">
+        <span id="ws-dot" class="ws-dot"></span>
+        <span id="ws-label">Connecting</span>
       </div>
     </header>
 
-    <!-- Conversation -->
-    <div class="convo-area" id="conversation-area">
-      <!-- Welcome state -->
-      <div class="welcome" id="welcome-state">
-        <div class="welcome-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    <!-- Conversation area -->
+    <div class="convo" id="convo">
+
+      <!-- Welcome -->
+      <div id="welcome" class="welcome">
+        <div class="welcome-logo">
+          <svg viewBox="0 0 32 32" fill="none" width="48" height="48"><rect width="32" height="32" rx="8" fill="#10a37f"/><path d="M16 6L8 13h5v3H8l8 10 8-10h-5v-3h5L16 6z" fill="white"/></svg>
         </div>
         <h2>What mod do you want to build?</h2>
-        <p>Describe your idea and pick your loader, version, and thinking level below.</p>
-        <div class="example-grid">
-          <button class="eg-btn" onclick="useExample(this)">A sword that strikes lightning on hit</button>
-          <button class="eg-btn" onclick="useExample(this)">Backpack with 27 inventory slots</button>
-          <button class="eg-btn" onclick="useExample(this)">Magic wand that teleports you where you look</button>
-          <button class="eg-btn" onclick="useExample(this)">Custom ore that only spawns near diamonds</button>
-          <button class="eg-btn" onclick="useExample(this)">Jetpack item with fuel durability system</button>
-          <button class="eg-btn" onclick="useExample(this)">Custom biome with giant mushroom trees</button>
+        <p>Pick your loader and version, then describe your idea below.</p>
+        <div class="examples-grid">
+          <button class="example-btn" onclick="fillExample(this)">A sword that strikes lightning on hit</button>
+          <button class="example-btn" onclick="fillExample(this)">Backpack with 27 inventory slots</button>
+          <button class="example-btn" onclick="fillExample(this)">Magic wand that teleports where you look</button>
+          <button class="example-btn" onclick="fillExample(this)">Custom ore that only spawns near diamonds</button>
+          <button class="example-btn" onclick="fillExample(this)">Jetpack with fuel durability system</button>
+          <button class="example-btn" onclick="fillExample(this)">Custom biome with giant mushroom trees</button>
         </div>
       </div>
 
@@ -306,56 +288,53 @@
       <div id="messages"></div>
     </div>
 
-    <!-- Input zone -->
-    <div class="input-zone">
-      <!-- Controls row -->
-      <div class="input-controls">
-        <div class="ctrl-group">
-          <label class="ctrl-label">Loader</label>
-          <select id="loader-select" class="ctrl-select" onchange="onLoaderChange()">
+    <!-- Input area -->
+    <div class="input-area">
+      <!-- Options row -->
+      <div class="input-opts">
+        <div class="opt-group">
+          <label>Loader</label>
+          <select id="sel-loader" onchange="onLoaderChange()">
             <option value="forge">⚙️ Forge</option>
             <option value="fabric">🪡 Fabric</option>
             <option value="neoforge">✨ NeoForge</option>
           </select>
         </div>
-        <div class="ctrl-group">
-          <label class="ctrl-label">MC Version</label>
-          <select id="version-select" class="ctrl-select">
-            <option value="">Loading...</option>
+        <div class="opt-group">
+          <label>MC Version</label>
+          <select id="sel-version">
+            <option>Loading...</option>
           </select>
         </div>
-        <div class="ctrl-group">
-          <label class="ctrl-label">Thinking</label>
-          <select id="thinking-select" class="ctrl-select thinking-select">
-            <option value="low">⚡ Low — Fast</option>
-            <option value="medium" selected>🧩 Medium — Balanced</option>
-            <option value="high">🧠 High — Deep</option>
+        <div class="opt-group">
+          <label>Thinking</label>
+          <select id="sel-thinking">
+            <option value="low">⚡ Low · Fast</option>
+            <option value="medium" selected>🧠 Medium · Balanced</option>
+            <option value="high">💡 High · Best</option>
           </select>
         </div>
       </div>
 
-      <!-- Textarea row -->
-      <div class="input-row">
-        <div class="textarea-wrap">
-          <textarea
-            id="prompt-input"
-            placeholder="Describe your mod idea... e.g. 'A sword that shoots fireballs when right-clicked'"
-            rows="1"
-            onkeydown="handleInputKey(event)"
-            oninput="autoResize(this)"
-          ></textarea>
-        </div>
-        <button class="send-btn" id="send-btn" onclick="sendPrompt()" title="Generate Mod">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg>
+      <!-- Text + send -->
+      <div class="input-box">
+        <textarea
+          id="prompt"
+          placeholder="Describe your mod idea..."
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoGrow(this)"
+        ></textarea>
+        <button id="send-btn" class="send-btn" onclick="sendPrompt()" title="Generate (Ctrl+Enter)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg>
         </button>
       </div>
 
-      <div class="input-footer-text">
-        <span id="thinking-hint" class="thinking-hint">🧩 Medium thinking — Extended reasoning enabled</span>
-        <span>· <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to generate</span>
+      <div class="input-hint">
+        <span id="thinking-hint">🧠 Medium — 8K thinking tokens</span>
+        <span>· <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send</span>
       </div>
     </div>
-
   </main>
 </div>
 
