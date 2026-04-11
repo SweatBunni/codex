@@ -72,18 +72,11 @@ const config = {
 
 // Validate required configuration
 function validateConfig() {
-  const required = ['ai.apiKey'];
-  const missing = required.filter(key => {
-    const keys = key.split('.');
-    let value = config;
-    for (const k of keys) {
-      value = value?.[k];
-    }
-    return !value;
-  });
-
-  if (missing.length > 0) {
-    throw new Error(`Missing required configuration: ${missing.join(', ')}`);
+  // Check if any AI API key is available
+  const hasApiKey = config.ai.apiKey;
+  
+  if (!hasApiKey) {
+    throw new Error('Missing required AI API key. Set OPENROUTER_API_KEY, MISTRAL_API_KEY, or OPENAI_API_KEY');
   }
 }
 
