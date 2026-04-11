@@ -1,7 +1,7 @@
 {
   "name": "codexmc",
   "version": "3.0.0",
-  "description": "AI-powered Minecraft mod generator using Google Gemini — ChatGPT-style UI",
+  "description": "AI Minecraft mod generator - Gemini via Vertex AI",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -20,7 +20,8 @@
     "winston": "^3.11.0",
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
-    "compression": "^1.7.4"
+    "compression": "^1.7.4",
+    "google-auth-library": "^9.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

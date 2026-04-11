@@ -1,6 +1,8 @@
 /**
- * CodexMC v3 - Gemini-powered Minecraft Mod Generator
+ * CodexMC v3 — Gemini-powered Minecraft Mod Generator
  * Uses Google Gemini 2.5 Flash via Vertex AI (works in USA)
+ * Supports: Forge, Fabric, NeoForge
+ * Outputs: .jar (compiled) + source .zip
  */
 
 const axios = require('axios');
@@ -15,7 +17,7 @@ const { logger } = require('../utils/logger');
 
 const WORKSPACE_DIR = config.workspace.dir;
 
-// Reuse auth client - handles token refresh automatically
+// Reuse auth client across requests (handles token refresh automatically)
 let _authClient = null;
 async function getAccessToken() {
   if (!_authClient) {
@@ -29,7 +31,7 @@ async function getAccessToken() {
   return token.token;
 }
 
-// Java Auto-Detection
+// ─── Java Auto-Detection ──────────────────────────────────────────
 const javaCache = {};
 
 function probeJavaMajor(javaHome) {
@@ -70,20 +72,30 @@ function resolveJavaHome(major) {
   if (process.env[envKey]) { javaCache[major] = process.env[envKey]; return javaCache[major]; }
   const found = scanForJava(major);
   if (found) { javaCache[major] = found; return found; }
+  // fallback: PATH java
+  try {
+    const v = parseInt(execSync('java -version 2>&1').toString().match(/version "(?:1\.(\d+)|(\d+))/)?.[1] || '0');
+    if (v === major) { javaCache[major] = null; return null; }
+  } catch {}
   return null;
 }
 
+// ─── Version Helpers ──────────────────────────────────────────────
 function requiredJavaMajor(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
   if (minor >= 21) return 21;
   if (minor >= 17) return 17;
+  if (minor >= 12) return 8;
   return 8;
 }
 
 function getGradleVersion(mcVersion, loader) {
   const [, minor] = mcVersion.split('.').map(Number);
-  if (loader === 'fabric') return minor >= 20 ? '8.8' : minor >= 18 ? '7.4.2' : '7.1';
+  if (loader === 'fabric') {
+    return minor >= 20 ? '8.8' : minor >= 18 ? '7.4.2' : '7.1';
+  }
   if (loader === 'neoforge') return '8.8';
+  // Forge
   if (minor >= 20) return '8.4';
   if (minor >= 18) return '7.4.2';
   return '7.1';
@@ -104,55 +116,44 @@ function getFabricApi(mcVersion) {
 
 function getForgeGradleVersion(mcVersion) {
   const [, minor] = mcVersion.split('.').map(Number);
-  return minor >= 20 ? '6.0.+' : '5.1.+';
+  if (minor >= 20) return '6.0.+';
+  if (minor >= 18) return '5.1.+';
+  return '5.1.+';
 }
 
-// Vertex AI Client
-async function callGemini(prompt, thinkingBudget) {
-  const { projectId, location, model, maxTokens, temperature } = config.vertex;
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
-  const token = await getAccessToken();
+// ─── Gemini AI Client ─────────────────────────────────────────────
+async function callGemini(prompt, thinkingBudget = 8192) {
+  const model = config.gemini.model;
+  const url = `${GEMINI_BASE}/${model}:generateContent?key=${config.gemini.apiKey}`;
 
-  const res = await axios.post(url, {
+  const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
-      maxOutputTokens: maxTokens,
-      temperature,
-      thinkingConfig: { thinkingBudget, includeThoughts: false },
+      maxOutputTokens: config.gemini.maxTokens,
+      temperature: config.gemini.temperature,
+      thinkingConfig: {
+        thinkingBudget,
+        includeThoughts: false,
+      },
     },
-  }, {
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+  };
+
+  const res = await axios.post(url, body, {
+    headers: { 'Content-Type': 'application/json' },
     timeout: 240000,
   });
 
   const candidate = res.data?.candidates?.[0];
-  if (!candidate) throw new Error('Vertex AI returned no candidates');
-  return candidate.content?.parts?.map(p => p.text || '').join('') || '';
+  if (!candidate) throw new Error('Gemini returned no candidates');
+  const text = candidate.content?.parts?.map(p => p.text || '').join('') || '';
+  return text;
 }
 
-function buildDependencies(loader, mcVersion, loaderVersion) {
-  if (loader === 'fabric') {
-    return `FABRIC DEPENDENCIES:
-- fabric-loom: ${getFabricLoom(mcVersion)}
-- fabric-loader: ${loaderVersion || '0.15.11'}
-- fabric-api: ${getFabricApi(mcVersion)}
-- Use FabricMod annotation, use Fabric API events`;
-  }
-  if (loader === 'neoforge') {
-    return `NEOFORGE DEPENDENCIES:
-- NeoGradle plugin
-- NeoForge: ${loaderVersion || '20.4.167'}
-- Use @Mod annotation, NeoForge event bus`;
-  }
-  return `FORGE DEPENDENCIES:
-- ForgeGradle: ${getForgeGradleVersion(mcVersion)}
-- MinecraftForge: ${loaderVersion || '47.2.0'}
-- Use @Mod annotation, Forge event bus, DeferredRegister`;
-}
-
+// ─── Prompt Builder ───────────────────────────────────────────────
 function buildPrompt(req) {
   const { description, loader, mcVersion, loaderVersion, thinkingLevel } = req;
   const loaderUpper = loader.toUpperCase();
+
   const depBlock = buildDependencies(loader, mcVersion, loaderVersion);
 
   return `You are an expert Minecraft mod developer. Generate a complete, working Minecraft mod.
@@ -165,10 +166,10 @@ REQUIREMENTS:
 - Quality level: ${thinkingLevel}
 
 CRITICAL RULES:
-1. Output ONLY a valid JSON object - no markdown, no code fences, no commentary
+1. Output ONLY a valid JSON object — no markdown, no code fences, no commentary
 2. All Java files must be syntactically valid and compile cleanly
 3. Use correct package structure: com.codexmc.<modid>
-4. Use proper ${loaderUpper} ${mcVersion} APIs - no deprecated methods
+4. Use proper ${loaderUpper} ${mcVersion} APIs — no deprecated methods
 5. Include ALL required files for a compilable mod
 6. The mod must actually implement the described feature
 
@@ -192,51 +193,93 @@ JSON FORMAT (output this exact structure, no extra text):
 Include ALL necessary Java source files. Make the mod complete and functional.`;
 }
 
+function buildDependencies(loader, mcVersion, loaderVersion) {
+  if (loader === 'fabric') {
+    return `FABRIC DEPENDENCIES:
+- fabric-loom: ${getFabricLoom(mcVersion)}
+- fabric-loader: ${loaderVersion || '0.15.11'}
+- fabric-api: ${getFabricApi(mcVersion)}
+- Use FabricMod annotation, use Fabric API events`;
+  }
+  if (loader === 'neoforge') {
+    return `NEOFORGE DEPENDENCIES:
+- NeoGradle plugin
+- NeoForge: ${loaderVersion || '20.4.167'}
+- Use @Mod annotation, NeoForge event bus`;
+  }
+  // forge
+  return `FORGE DEPENDENCIES:
+- ForgeGradle: ${getForgeGradleVersion(mcVersion)}
+- MinecraftForge: ${loaderVersion || '47.2.0'}
+- Use @Mod annotation, Forge event bus, DeferredRegister`;
+}
+
+// ─── JSON Extractor ───────────────────────────────────────────────
 function extractJSON(text) {
+  // Try direct parse
   try { return JSON.parse(text.trim()); } catch {}
+  // Find first { to last }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start !== -1 && end !== -1) {
     try { return JSON.parse(text.slice(start, end + 1)); } catch {}
   }
+  // Strip code fences
   const stripped = text.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
   try { return JSON.parse(stripped); } catch {}
   throw new Error('Could not extract valid JSON from AI response');
 }
 
+// ─── Gradle Wrapper Writer ────────────────────────────────────────
 async function writeGradleWrapper(workDir, mcVersion, loader) {
   const gradleVersion = getGradleVersion(mcVersion, loader);
   const gradleDir = path.join(workDir, 'gradle', 'wrapper');
   await fs.ensureDir(gradleDir);
 
   await fs.writeFile(path.join(gradleDir, 'gradle-wrapper.properties'),
-    `distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-${gradleVersion}-bin.zip\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n`
-  );
+    `distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-${gradleVersion}-bin.zip
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+`);
 
-  const gradlew = `#!/bin/sh\nAPP_HOME="$(cd "$(dirname "$0")" && pwd)"\nexec "${process.env.JAVA_HOME || 'java'}" -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"\n`;
+  // gradlew script
+  const gradlew = `#!/bin/sh
+APP_HOME="$(cd "$(dirname "$0")" && pwd)"
+exec "${process.env.JAVA_HOME || 'java'}" -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"
+`;
   await fs.writeFile(path.join(workDir, 'gradlew'), gradlew, { mode: 0o755 });
 
-  const localJar = '/srv/codex/gradletmp/gradle/wrapper/gradle-wrapper.jar';
+  // Try to copy gradle-wrapper.jar from system or download
+  const jarDest = path.join(gradleDir, 'gradle-wrapper.jar');
+  const localJar = path.join('/srv/codex/gradletmp/gradle/wrapper/gradle-wrapper.jar');
   if (await fs.pathExists(localJar)) {
-    await fs.copy(localJar, path.join(gradleDir, 'gradle-wrapper.jar'));
+    await fs.copy(localJar, jarDest);
   }
 }
 
+// ─── Compile ──────────────────────────────────────────────────────
 function buildMod(workDir, mcVersion, loader, emit) {
   return new Promise((resolve, reject) => {
     const javaMajor = requiredJavaMajor(mcVersion);
     const javaHome = resolveJavaHome(javaMajor);
+
     const env = { ...process.env };
     if (javaHome) env.JAVA_HOME = javaHome;
 
     const gradlew = path.join(workDir, 'gradlew');
     const cmd = fs.existsSync(gradlew) ? gradlew : 'gradle';
 
-    emit('build', `Building with Java ${javaMajor}...`);
+    emit('build', `🏗️  Building with Java ${javaMajor}...`);
 
-    const proc = spawn(cmd, ['build', '--no-daemon', '--stacktrace'], { cwd: workDir, env, stdio: 'pipe' });
+    const proc = spawn(cmd, ['build', '--no-daemon', '--stacktrace'], {
+      cwd: workDir,
+      env,
+      stdio: 'pipe',
+    });
+
     let output = '';
-
     const onData = (d) => {
       const line = d.toString();
       output += line;
@@ -245,12 +288,22 @@ function buildMod(workDir, mcVersion, loader, emit) {
 
     proc.stdout.on('data', onData);
     proc.stderr.on('data', onData);
-    proc.on('close', code => code === 0 ? resolve(output) : reject(new Error(`Build failed (exit ${code})\n${output.slice(-2000)}`)));
+
+    proc.on('close', code => {
+      if (code === 0) resolve(output);
+      else reject(new Error(`Build failed (exit ${code})\n${output.slice(-2000)}`));
+    });
+
     proc.on('error', reject);
-    setTimeout(() => { proc.kill(); reject(new Error('Build timed out')); }, config.workspace.buildTimeout);
+
+    setTimeout(() => {
+      proc.kill();
+      reject(new Error('Build timed out'));
+    }, config.workspace.buildTimeout);
   });
 }
 
+// ─── ZIP ──────────────────────────────────────────────────────────
 async function zipDirectory(srcDir, outPath) {
   return new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outPath);
@@ -263,6 +316,7 @@ async function zipDirectory(srcDir, outPath) {
   });
 }
 
+// ─── Find built JAR ───────────────────────────────────────────────
 async function findJar(workDir) {
   const buildLibs = path.join(workDir, 'build', 'libs');
   if (!await fs.pathExists(buildLibs)) return null;
@@ -271,14 +325,18 @@ async function findJar(workDir) {
   return jar ? path.join(buildLibs, jar) : null;
 }
 
+// ─── Validate mod object ──────────────────────────────────────────
 function validateMod(mod) {
   if (!mod.modId || typeof mod.modId !== 'string') throw new Error('Missing modId');
   if (!mod.files || typeof mod.files !== 'object') throw new Error('Missing files');
   if (Object.keys(mod.files).length === 0) throw new Error('No files generated');
-  if (!Object.keys(mod.files).some(f => f.endsWith('.java'))) throw new Error('No Java files generated');
-  if (!Object.keys(mod.files).some(f => f === 'build.gradle' || f === 'build.gradle.kts')) throw new Error('No build.gradle generated');
+  const hasJava = Object.keys(mod.files).some(f => f.endsWith('.java'));
+  if (!hasJava) throw new Error('No Java files generated');
+  const hasBuild = Object.keys(mod.files).some(f => f === 'build.gradle' || f === 'build.gradle.kts');
+  if (!hasBuild) throw new Error('No build.gradle generated');
 }
 
+// ─── Main generateMod ─────────────────────────────────────────────
 async function generateMod(request, onProgress) {
   const jobId = uuidv4();
   const workDir = path.join(WORKSPACE_DIR, jobId);
@@ -290,27 +348,29 @@ async function generateMod(request, onProgress) {
 
   try {
     await fs.ensureDir(workDir);
-    emit('status', `Starting mod generation (Job: ${jobId})`);
-    emit('status', 'Using Google Gemini 2.5 Flash via Vertex AI');
+    emit('status', `🚀 Starting mod generation (Job: ${jobId})`);
+    emit('status', `🤖 Using Google Gemini 2.5 Flash — Best free Java coding AI`);
 
     const thinkingMap = { low: 2048, medium: 8192, high: 24576 };
     const thinkingBudget = thinkingMap[request.thinkingLevel] || 8192;
 
-    emit('ai', `Gemini thinking... (budget: ${thinkingBudget} tokens)`);
-    emit('ai', `Prompt: "${request.description}"`);
+    emit('ai', `🧠 Gemini thinking (budget: ${thinkingBudget} tokens)...`);
+    emit('ai', `📝 Describing mod to AI: "${request.description}"`);
 
     const prompt = buildPrompt(request);
     const rawResponse = await callGemini(prompt, thinkingBudget);
 
-    emit('ai', 'Response received, parsing...');
+    emit('ai', '✅ AI response received, parsing...');
 
     let mod;
     try {
       mod = extractJSON(rawResponse);
     } catch (e) {
-      emit('ai', 'Retrying with stricter JSON prompt...');
+      emit('error', `Failed to parse AI response: ${e.message}`);
+      // Retry with explicit JSON instruction
+      emit('ai', '🔄 Retrying with stricter JSON prompt...');
       const retry = await callGemini(
-        `${prompt}\n\nIMPORTANT: Output ONLY the raw JSON object. Start with { and end with }. No other text whatsoever.`,
+        `${prompt}\n\nIMPORTANT: Your previous response was not valid JSON. Output ONLY the raw JSON object, starting with { and ending with }. No other text.`,
         thinkingBudget
       );
       mod = extractJSON(retry);
@@ -319,23 +379,27 @@ async function generateMod(request, onProgress) {
     validateMod(mod);
 
     const modId = mod.modId.toLowerCase().replace(/[^a-z0-9]/g, '');
-    emit('files', `Mod ID: ${modId}`);
-    emit('files', `Writing ${Object.keys(mod.files).length} files...`);
+    emit('files', `📦 Mod ID: ${modId}`);
+    emit('files', `📁 Writing ${Object.keys(mod.files).length} files...`);
 
+    // Write all files
     for (const [relPath, content] of Object.entries(mod.files)) {
       const fullPath = path.join(workDir, relPath);
       await fs.ensureDir(path.dirname(fullPath));
       await fs.writeFile(fullPath, content, 'utf8');
-      emit('file', relPath);
+      emit('file', `  📄 ${relPath}`);
     }
 
+    // Write gradle wrapper
     await writeGradleWrapper(workDir, request.mcVersion, request.loader);
 
+    // Zip source
     const sourceZipPath = path.join(workDir, `${modId}-source.zip`);
-    emit('build', 'Creating source ZIP...');
+    emit('build', '🗜️  Zipping source files...');
     await zipDirectory(workDir, sourceZipPath);
 
-    emit('build', 'Compiling with Gradle...');
+    // Compile
+    emit('build', '🏗️  Compiling with Gradle...');
     let jarPath = null;
     let buildSuccess = false;
     let buildError = null;
@@ -344,29 +408,39 @@ async function generateMod(request, onProgress) {
       await buildMod(workDir, request.mcVersion, request.loader, emit);
       jarPath = await findJar(workDir);
       buildSuccess = true;
-      emit('success', 'BUILD SUCCESSFUL');
-      if (jarPath) emit('success', `JAR: ${path.basename(jarPath)}`);
+      emit('success', `✅ BUILD SUCCESSFUL`);
+      if (jarPath) emit('success', `📦 JAR: ${path.basename(jarPath)}`);
     } catch (err) {
       buildError = err.message;
-      emit('warning', 'Compile failed - source ZIP still available');
+      emit('warning', `⚠️  Compile failed — source ZIP still available`);
+      emit('warning', buildError.split('\n').slice(-3).join(' '));
     }
 
     const result = {
-      jobId, modId,
+      jobId,
+      modId,
       modName: mod.modName || modId,
       version: mod.version || '1.0.0',
       description: mod.description || request.description,
       loader: request.loader,
       mcVersion: request.mcVersion,
       files: Object.keys(mod.files),
-      sourceZipPath, jarPath, buildSuccess, buildError, workDir,
+      sourceZipPath,
+      jarPath,
+      buildSuccess,
+      buildError,
+      workDir,
     };
 
-    emit('done', buildSuccess ? 'Done! JAR + Source ZIP ready' : 'Done! Source ZIP ready (compile locally)');
-    return result;
+    if (buildSuccess) {
+      emit('done', `🎉 Done! JAR + Source ZIP ready`);
+    } else {
+      emit('done', `📁 Done! Source ZIP ready (compile it locally)`);
+    }
 
+    return result;
   } catch (error) {
-    emit('error', `Generation failed: ${error.message}`);
+    emit('error', `❌ Generation failed: ${error.message}`);
     throw error;
   }
 }
