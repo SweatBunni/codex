@@ -160,7 +160,7 @@ function getJavaVersionString(mcVersion) {
 function buildDependencies(loader, mcVersion, loaderVersion) {
   if (loader === 'fabric') {
     return `FABRIC DEPENDENCIES:
-- ${getFabricLoomPluginId(mcVersion)}: ${getFabricLoom(mcVersion)}
+- fabric-loom: ${getFabricLoom(mcVersion)}
 - fabric-loader: ${loaderVersion || '0.15.11'}
 - fabric-api: ${getFabricApi(mcVersion)}
 - Main entrypoint must implement net.fabricmc.api.ModInitializer
@@ -411,6 +411,7 @@ base {
 }
 
 repositories {
+    maven { url = 'https://maven.fabricmc.net/' } // ✅ CRITICAL FIX
     mavenCentral()
 }
 
@@ -444,9 +445,6 @@ publishing {
         mavenJava(MavenPublication) {
             from components.java
         }
-    }
-
-    repositories {
     }
 }`;
 }
