@@ -112,6 +112,19 @@ function getFabricLoom(mcVersion) {
   return '0.10';
 }
 
+function getFabricLoomPluginId(mcVersion) {
+  const parts = mcVersion.split('.').map(Number);
+  const major = parts[0] || 1;
+  const minor = parts[1] || 0;
+  const patch = parts[2] || 0;
+
+  if (major > 1 || minor > 21 || (minor === 21 && patch >= 12)) {
+    return 'net.fabricmc.fabric-loom';
+  }
+
+  return 'net.fabricmc.fabric-loom-remap';
+}
+
 function getFabricApi(mcVersion) {
   const map = {
     '1.21.11': '0.140.2+1.21.11',
@@ -169,7 +182,7 @@ async function callOpenRouter(prompt) {
 function buildDependencies(loader, mcVersion, loaderVersion) {
   if (loader === 'fabric') {
     return `FABRIC DEPENDENCIES:
-- fabric-loom: ${getFabricLoom(mcVersion)}
+- ${getFabricLoomPluginId(mcVersion)}: ${getFabricLoom(mcVersion)}
 - fabric-loader: ${loaderVersion || '0.15.11'}
 - fabric-api: ${getFabricApi(mcVersion)}
 - Main entrypoint must implement net.fabricmc.api.ModInitializer
@@ -379,7 +392,7 @@ function buildFabricBuildGradle({ modId, version, mcVersion, loaderVersion }) {
   const javaVersionEnum = getJavaVersionString(mcVersion);
 
   return `plugins {
-    id 'fabric-loom' version '${getFabricLoom(mcVersion)}'
+    id '${getFabricLoomPluginId(mcVersion)}' version '${getFabricLoom(mcVersion)}'
     id 'maven-publish'
 }
 
