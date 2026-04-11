@@ -140,6 +140,7 @@ app.ws('/ws/generate', (ws, req) => {
 });
 
 // ─── Start ───────────────────────────────────────────────────────
+const PORT = config?.server?.port || process.env.PORT || 3000;
 app.listen(PORT, () => {
   logger.info(`CodexMC v3 running on http://localhost:${PORT}`);
 
