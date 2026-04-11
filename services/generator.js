@@ -13,7 +13,7 @@ const { v4: uuidv4 } = require('uuid');
 const archiver = require('archiver');
 const { spawn, execSync } = require('child_process');
 
-const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
+const MISTRAL_API = 'https://api.mistral.ai/v1/chat/completions';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/codexmc-workspaces';
 const TEMPLATE_GRADLE_DIR = process.env.TEMPLATE_GRADLE_DIR || '/srv/codex/gradletmp';
 
@@ -456,19 +456,19 @@ function validate(mod) {
 
 const THINKING_CONFIGS = {
   low: {
-    model: 'mistralai/mistral-7b-instruct',
+    model: 'mistral-7b-instruct-v0.3',
     max_tokens: 4000,
     temperature: 0.3,
     extraSystemNote: 'Be concise. Generate only required files.',
   },
   medium: {
-    model: 'mistralai/mistral-7b-instruct',
+    model: 'mistral-7b-instruct-v0.3',
     max_tokens: 8000,
     temperature: 0.25,
     extraSystemNote: 'Include proper mod structure and registration.',
   },
   high: {
-    model: 'mistralai/mistral-7b-instruct',
+    model: 'mistral-large',
     max_tokens: 16000,
     temperature: 0.2,
     extraSystemNote: 'Deep production-grade Minecraft mod with full correctness.',
@@ -840,7 +840,7 @@ async function generateMod(request, onProgress) {
   const systemPrompt = buildSystemPrompt(request, request.thinkingLevel);
   const userPrompt = buildUserPrompt(request);
   
-  const initialResponse = await retry(async () => axios.post(OPENROUTER_API, {
+  const initialResponse = await retry(async () => axios.post(MISTRAL_API, {
     model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
     messages: [
       { role: 'system', content: systemPrompt },
@@ -848,7 +848,7 @@ async function generateMod(request, onProgress) {
     ]
   }, {
     headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
       'Content-Type': 'application/json'
     }
   }));
@@ -933,7 +933,7 @@ Return ONLY the corrected "files" object with the complete "files" JSON structur
         try {
           emit('info', `Sending fix request to AI with errors:\n${errorSummary}`);
           
-          const fixResponse = await axios.post(OPENROUTER_API, {
+          const fixResponse = await axios.post(MISTRAL_API, {
             model: THINKING_CONFIGS[request.thinkingLevel || 'medium'].model,
             messages: [
               { role: 'system', content: systemPrompt },
@@ -943,7 +943,7 @@ Return ONLY the corrected "files" object with the complete "files" JSON structur
             ]
           }, {
             headers: {
-              Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
               'Content-Type': 'application/json'
             }
           });
