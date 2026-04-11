@@ -252,46 +252,61 @@ async function fixGradle(workDir) {
 
   let g = await fs.readFile(file, 'utf8');
 
-  // Fix: Ensure proper formatting - decompress single-line Gradle syntax
-  // Convert patterns like "plugins{id...}" to multi-line format
-  g = g.replace(/plugins\s*\{\s*id\s+/g, 'plugins {\n  id ');
-  g = g.replace(/repositories\s*\{\s*/g, '\n}\n\nrepositories {\n  ');
-  g = g.replace(/dependencies\s*\{\s*/g, '\n}\n\ndependencies {\n  ');
+  // Step 1: Count braces to see if file is balanced
+  const openCount = (g.match(/\{/g) || []).length;
+  const closeCount = (g.match(/\}/g) || []).length;
   
-  // Add newlines before closing braces where missing
-  g = g.replace(/;/g, '\n  ');
-  
-  // Ensure file ends with closing brace
-  if (!g.trim().endsWith('}')) {
-    g = g + '\n}';
+  // Step 2: Remove extra closing braces at the end
+  if (closeCount > openCount) {
+    // Find the last closing brace
+    for (let i = 0; i < closeCount - openCount; i++) {
+      g = g.replace(/\}\s*$/, '');
+    }
   }
 
-  if (!g.includes('mavenCentral')) {
-    g = 'repositories {\n  mavenCentral()\n  maven {\n    url = "https://maven.fabricmc.net/"\n  }\n}\n' + g;
-  }
-
-  // Fix: Remove pluginManagement from build.gradle if present (it belongs in settings.gradle)
+  // Step 3: Fix pluginManagement if present (belongs in settings.gradle)
   if (g.includes('pluginManagement')) {
     g = g.replace(/pluginManagement\s*\{[\s\S]*?\}\s*/m, '');
   }
 
-  // Fix: Replace problematic yarn mappings with officialMojangMappings
+  // Step 4: Replace problematic yarn mappings
   if (g.includes('yarn:') || g.includes('net.fabricmc:yarn')) {
     g = g.replace(/mappings\s+['"]net\.fabricmc:yarn:[^'"]+['"]/g, "mappings loom.officialMojangMappings()");
   }
 
-  // Fix: Ensure officialMojangMappings has proper format
+  // Step 5: Fix officialMojangMappings format
   if (g.includes('officialMojangMappings') && !g.includes('loom.officialMojangMappings()')) {
     g = g.replace(/officialMojangMappings/g, 'loom.officialMojangMappings()');
   }
 
-  // Fix: Remove invalid Fabric API versions that don't exist
-  // Fabric API versions are release-specific and old versions like 0.18.6 don't exist
-  // Only include Fabric API if explicitly needed with a valid version
+  // Step 6: Remove invalid Fabric API
   g = g.replace(/modImplementation\s+['"]net\.fabricmc\.fabric-api:fabric-api:[^'"]*['"]/g, '');
   
-  // Clean up any doubled spaces/newlines from removal
+  // Step 7: Ensure proper structure - add repositories if missing
+  if (!g.includes('repositories')) {
+    // Find where to insert (after plugins block)
+    const pluginsEnd = g.indexOf('plugins');
+    if (pluginsEnd !== -1) {
+      const nextBrace = g.indexOf('}', pluginsEnd);
+      if (nextBrace !== -1) {
+        const insertPos = nextBrace + 1;
+        g = g.slice(0, insertPos) + '\n\nrepositories {\n  mavenCentral()\n  maven {\n    url = "https://maven.fabricmc.net/"\n  }\n}' + g.slice(insertPos);
+      }
+    }
+  } else if (!g.includes('mavenCentral')) {
+    // repositories exists but missing mavenCentral
+    g = g.replace(/repositories\s*\{/g, 'repositories {\n  mavenCentral()');
+  }
+
+  // Step 8: Clean up excess whitespace
   g = g.replace(/\n\s*\n\s*\n/g, '\n\n');
+  
+  // Step 9: Ensure file ends with single closing brace and newline
+  g = g.trim();
+  if (!g.endsWith('}')) {
+    g = g + '\n}';
+  }
+  g = g + '\n';
 
   await fs.writeFile(file, g);
 }
