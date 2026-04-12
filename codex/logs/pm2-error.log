@@ -1,0 +1,699 @@
+2026-04-12 04:00:06 +00:00: [CodexMC] Model failed: deepseek/deepseek-coder:free P [AI_APICallError]: Bad Request
+2026-04-12 04:00:06 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:00:06 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:00:06 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:00:06 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:00:06 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:00:06 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:00:06 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:00:06 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:00:06 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:00:06 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:00:06 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:00:06 +00:00:   requestBodyValues: {
+2026-04-12 04:00:06 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:00:06 +00:00:     logit_bias: undefined,
+2026-04-12 04:00:06 +00:00:     logprobs: undefined,
+2026-04-12 04:00:06 +00:00:     top_logprobs: undefined,
+2026-04-12 04:00:06 +00:00:     user: undefined,
+2026-04-12 04:00:06 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:00:06 +00:00:     max_tokens: 8192,
+2026-04-12 04:00:06 +00:00:     temperature: 0.45,
+2026-04-12 04:00:06 +00:00:     top_p: undefined,
+2026-04-12 04:00:06 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:00:06 +00:00:     presence_penalty: undefined,
+2026-04-12 04:00:06 +00:00:     seed: undefined,
+2026-04-12 04:00:06 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:00:06 +00:00:     tools: undefined,
+2026-04-12 04:00:06 +00:00:     tool_choice: undefined,
+2026-04-12 04:00:06 +00:00:     stream: true,
+2026-04-12 04:00:06 +00:00:     stream_options: undefined
+2026-04-12 04:00:06 +00:00:   },
+2026-04-12 04:00:06 +00:00:   statusCode: 400,
+2026-04-12 04:00:06 +00:00:   responseHeaders: {
+2026-04-12 04:00:06 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:00:06 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:00:06 +00:00:     'cf-ray': '9eaf5274ee8fb4a5-IAD',
+2026-04-12 04:00:06 +00:00:     connection: 'keep-alive',
+2026-04-12 04:00:06 +00:00:     'content-type': 'application/json',
+2026-04-12 04:00:06 +00:00:     date: 'Sun, 12 Apr 2026 04:00:06 GMT',
+2026-04-12 04:00:06 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:00:06 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:00:06 +00:00:     server: 'cloudflare',
+2026-04-12 04:00:06 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:00:06 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:00:06 +00:00:   },
+2026-04-12 04:00:06 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:00:06 +00:00:   cause: undefined,
+2026-04-12 04:00:06 +00:00:   isRetryable: false,
+2026-04-12 04:00:06 +00:00:   data: undefined
+2026-04-12 04:00:06 +00:00: }
+2026-04-12 04:00:06 +00:00: [CodexMC] Model failed: qwen/qwen-2.5-coder-32b-instruct:free P [AI_APICallError]: Not Found
+2026-04-12 04:00:06 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:00:06 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:00:06 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:00:06 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:00:06 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:00:06 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:00:06 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:00:06 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:00:06 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:00:06 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:00:06 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:00:06 +00:00:   requestBodyValues: {
+2026-04-12 04:00:06 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:00:06 +00:00:     logit_bias: undefined,
+2026-04-12 04:00:06 +00:00:     logprobs: undefined,
+2026-04-12 04:00:06 +00:00:     top_logprobs: undefined,
+2026-04-12 04:00:06 +00:00:     user: undefined,
+2026-04-12 04:00:06 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:00:06 +00:00:     max_tokens: 8192,
+2026-04-12 04:00:06 +00:00:     temperature: 0.45,
+2026-04-12 04:00:06 +00:00:     top_p: undefined,
+2026-04-12 04:00:06 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:00:06 +00:00:     presence_penalty: undefined,
+2026-04-12 04:00:06 +00:00:     seed: undefined,
+2026-04-12 04:00:06 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:00:06 +00:00:     tools: undefined,
+2026-04-12 04:00:06 +00:00:     tool_choice: undefined,
+2026-04-12 04:00:06 +00:00:     stream: true,
+2026-04-12 04:00:06 +00:00:     stream_options: undefined
+2026-04-12 04:00:06 +00:00:   },
+2026-04-12 04:00:06 +00:00:   statusCode: 404,
+2026-04-12 04:00:06 +00:00:   responseHeaders: {
+2026-04-12 04:00:06 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:00:06 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:00:06 +00:00:     'cf-ray': '9eaf5275cc947b59-IAD',
+2026-04-12 04:00:06 +00:00:     connection: 'keep-alive',
+2026-04-12 04:00:06 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:00:06 +00:00:     'content-type': 'application/json',
+2026-04-12 04:00:06 +00:00:     date: 'Sun, 12 Apr 2026 04:00:06 GMT',
+2026-04-12 04:00:06 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:00:06 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:00:06 +00:00:     server: 'cloudflare',
+2026-04-12 04:00:06 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:00:06 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:00:06 +00:00:   },
+2026-04-12 04:00:06 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:00:06 +00:00:   cause: undefined,
+2026-04-12 04:00:06 +00:00:   isRetryable: false,
+2026-04-12 04:00:06 +00:00:   data: undefined
+2026-04-12 04:00:06 +00:00: }
+2026-04-12 04:10:16 +00:00: [CodexMC] Model failed: deepseek/deepseek-coder:free P [AI_APICallError]: Bad Request
+2026-04-12 04:10:16 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:10:16 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:10:16 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:10:16 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:10:16 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:10:16 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:10:16 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:10:16 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:10:16 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:10:16 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:10:16 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:10:16 +00:00:   requestBodyValues: {
+2026-04-12 04:10:16 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:10:16 +00:00:     logit_bias: undefined,
+2026-04-12 04:10:16 +00:00:     logprobs: undefined,
+2026-04-12 04:10:16 +00:00:     top_logprobs: undefined,
+2026-04-12 04:10:16 +00:00:     user: undefined,
+2026-04-12 04:10:16 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:10:16 +00:00:     max_tokens: 8192,
+2026-04-12 04:10:16 +00:00:     temperature: 0.28,
+2026-04-12 04:10:16 +00:00:     top_p: undefined,
+2026-04-12 04:10:16 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:10:16 +00:00:     presence_penalty: undefined,
+2026-04-12 04:10:16 +00:00:     seed: undefined,
+2026-04-12 04:10:16 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:10:16 +00:00:     tools: undefined,
+2026-04-12 04:10:16 +00:00:     tool_choice: undefined,
+2026-04-12 04:10:16 +00:00:     stream: true,
+2026-04-12 04:10:16 +00:00:     stream_options: undefined
+2026-04-12 04:10:16 +00:00:   },
+2026-04-12 04:10:16 +00:00:   statusCode: 400,
+2026-04-12 04:10:16 +00:00:   responseHeaders: {
+2026-04-12 04:10:16 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:10:16 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:10:16 +00:00:     'cf-ray': '9eaf615cca385f12-IAD',
+2026-04-12 04:10:16 +00:00:     connection: 'keep-alive',
+2026-04-12 04:10:16 +00:00:     'content-type': 'application/json',
+2026-04-12 04:10:16 +00:00:     date: 'Sun, 12 Apr 2026 04:10:16 GMT',
+2026-04-12 04:10:16 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:10:16 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:10:16 +00:00:     server: 'cloudflare',
+2026-04-12 04:10:16 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:10:16 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:10:16 +00:00:   },
+2026-04-12 04:10:16 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:10:16 +00:00:   cause: undefined,
+2026-04-12 04:10:16 +00:00:   isRetryable: false,
+2026-04-12 04:10:16 +00:00:   data: undefined
+2026-04-12 04:10:16 +00:00: }
+2026-04-12 04:10:16 +00:00: [CodexMC] Model failed: qwen/qwen-2.5-coder-32b-instruct:free P [AI_APICallError]: Not Found
+2026-04-12 04:10:16 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:10:16 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:10:16 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:10:16 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:10:16 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:10:16 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:10:16 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:10:16 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:10:16 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:10:16 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:10:16 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:10:16 +00:00:   requestBodyValues: {
+2026-04-12 04:10:16 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:10:16 +00:00:     logit_bias: undefined,
+2026-04-12 04:10:16 +00:00:     logprobs: undefined,
+2026-04-12 04:10:16 +00:00:     top_logprobs: undefined,
+2026-04-12 04:10:16 +00:00:     user: undefined,
+2026-04-12 04:10:16 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:10:16 +00:00:     max_tokens: 8192,
+2026-04-12 04:10:16 +00:00:     temperature: 0.28,
+2026-04-12 04:10:16 +00:00:     top_p: undefined,
+2026-04-12 04:10:16 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:10:16 +00:00:     presence_penalty: undefined,
+2026-04-12 04:10:16 +00:00:     seed: undefined,
+2026-04-12 04:10:16 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:10:16 +00:00:     tools: undefined,
+2026-04-12 04:10:16 +00:00:     tool_choice: undefined,
+2026-04-12 04:10:16 +00:00:     stream: true,
+2026-04-12 04:10:16 +00:00:     stream_options: undefined
+2026-04-12 04:10:16 +00:00:   },
+2026-04-12 04:10:16 +00:00:   statusCode: 404,
+2026-04-12 04:10:16 +00:00:   responseHeaders: {
+2026-04-12 04:10:16 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:10:16 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:10:16 +00:00:     'cf-ray': '9eaf615dba50d66f-IAD',
+2026-04-12 04:10:16 +00:00:     connection: 'keep-alive',
+2026-04-12 04:10:16 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:10:16 +00:00:     'content-type': 'application/json',
+2026-04-12 04:10:16 +00:00:     date: 'Sun, 12 Apr 2026 04:10:16 GMT',
+2026-04-12 04:10:16 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:10:16 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:10:16 +00:00:     server: 'cloudflare',
+2026-04-12 04:10:16 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:10:16 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:10:16 +00:00:   },
+2026-04-12 04:10:16 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:10:16 +00:00:   cause: undefined,
+2026-04-12 04:10:16 +00:00:   isRetryable: false,
+2026-04-12 04:10:16 +00:00:   data: undefined
+2026-04-12 04:10:16 +00:00: }
+2026-04-12 04:10:36 +00:00: [CodexMC] Model failed: deepseek/deepseek-coder:free P [AI_APICallError]: Bad Request
+2026-04-12 04:10:36 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:10:36 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:10:36 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:10:36 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:10:36 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:10:36 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:10:36 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:10:36 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:10:36 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:10:36 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:10:36 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:10:36 +00:00:   requestBodyValues: {
+2026-04-12 04:10:36 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:10:36 +00:00:     logit_bias: undefined,
+2026-04-12 04:10:36 +00:00:     logprobs: undefined,
+2026-04-12 04:10:36 +00:00:     top_logprobs: undefined,
+2026-04-12 04:10:36 +00:00:     user: undefined,
+2026-04-12 04:10:36 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:10:36 +00:00:     max_tokens: 8192,
+2026-04-12 04:10:36 +00:00:     temperature: 0.28,
+2026-04-12 04:10:36 +00:00:     top_p: undefined,
+2026-04-12 04:10:36 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:10:36 +00:00:     presence_penalty: undefined,
+2026-04-12 04:10:36 +00:00:     seed: undefined,
+2026-04-12 04:10:36 +00:00:     messages: [ [Object], [Object], [Object], [Object] ],
+2026-04-12 04:10:36 +00:00:     tools: undefined,
+2026-04-12 04:10:36 +00:00:     tool_choice: undefined,
+2026-04-12 04:10:36 +00:00:     stream: true,
+2026-04-12 04:10:36 +00:00:     stream_options: undefined
+2026-04-12 04:10:36 +00:00:   },
+2026-04-12 04:10:36 +00:00:   statusCode: 400,
+2026-04-12 04:10:36 +00:00:   responseHeaders: {
+2026-04-12 04:10:36 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:10:36 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:10:36 +00:00:     'cf-ray': '9eaf61da9c47f270-IAD',
+2026-04-12 04:10:36 +00:00:     connection: 'keep-alive',
+2026-04-12 04:10:36 +00:00:     'content-type': 'application/json',
+2026-04-12 04:10:36 +00:00:     date: 'Sun, 12 Apr 2026 04:10:36 GMT',
+2026-04-12 04:10:36 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:10:36 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:10:36 +00:00:     server: 'cloudflare',
+2026-04-12 04:10:36 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:10:36 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:10:36 +00:00:   },
+2026-04-12 04:10:36 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:10:36 +00:00:   cause: undefined,
+2026-04-12 04:10:36 +00:00:   isRetryable: false,
+2026-04-12 04:10:36 +00:00:   data: undefined
+2026-04-12 04:10:36 +00:00: }
+2026-04-12 04:10:36 +00:00: [CodexMC] Model failed: qwen/qwen-2.5-coder-32b-instruct:free P [AI_APICallError]: Not Found
+2026-04-12 04:10:36 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:10:36 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:10:36 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:10:36 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:10:36 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:10:36 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:10:36 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:10:36 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:10:36 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:10:36 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:10:36 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:10:36 +00:00:   requestBodyValues: {
+2026-04-12 04:10:36 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:10:36 +00:00:     logit_bias: undefined,
+2026-04-12 04:10:36 +00:00:     logprobs: undefined,
+2026-04-12 04:10:36 +00:00:     top_logprobs: undefined,
+2026-04-12 04:10:36 +00:00:     user: undefined,
+2026-04-12 04:10:36 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:10:36 +00:00:     max_tokens: 8192,
+2026-04-12 04:10:36 +00:00:     temperature: 0.28,
+2026-04-12 04:10:36 +00:00:     top_p: undefined,
+2026-04-12 04:10:36 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:10:36 +00:00:     presence_penalty: undefined,
+2026-04-12 04:10:36 +00:00:     seed: undefined,
+2026-04-12 04:10:36 +00:00:     messages: [ [Object], [Object], [Object], [Object] ],
+2026-04-12 04:10:36 +00:00:     tools: undefined,
+2026-04-12 04:10:36 +00:00:     tool_choice: undefined,
+2026-04-12 04:10:36 +00:00:     stream: true,
+2026-04-12 04:10:36 +00:00:     stream_options: undefined
+2026-04-12 04:10:36 +00:00:   },
+2026-04-12 04:10:36 +00:00:   statusCode: 404,
+2026-04-12 04:10:36 +00:00:   responseHeaders: {
+2026-04-12 04:10:36 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:10:36 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:10:36 +00:00:     'cf-ray': '9eaf61dae9415008-IAD',
+2026-04-12 04:10:36 +00:00:     connection: 'keep-alive',
+2026-04-12 04:10:36 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:10:36 +00:00:     'content-type': 'application/json',
+2026-04-12 04:10:36 +00:00:     date: 'Sun, 12 Apr 2026 04:10:36 GMT',
+2026-04-12 04:10:36 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:10:36 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:10:36 +00:00:     server: 'cloudflare',
+2026-04-12 04:10:36 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:10:36 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:10:36 +00:00:   },
+2026-04-12 04:10:36 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:10:36 +00:00:   cause: undefined,
+2026-04-12 04:10:36 +00:00:   isRetryable: false,
+2026-04-12 04:10:36 +00:00:   data: undefined
+2026-04-12 04:10:36 +00:00: }
+2026-04-12 04:15:11 +00:00: [CodexMC] Model failed: deepseek/deepseek-coder:free P [AI_APICallError]: Bad Request
+2026-04-12 04:15:11 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:15:11 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:15:11 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:15:11 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:15:11 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:15:11 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:15:11 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:15:11 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:15:11 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:15:11 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:15:11 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:15:11 +00:00:   requestBodyValues: {
+2026-04-12 04:15:11 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:15:11 +00:00:     logit_bias: undefined,
+2026-04-12 04:15:11 +00:00:     logprobs: undefined,
+2026-04-12 04:15:11 +00:00:     top_logprobs: undefined,
+2026-04-12 04:15:11 +00:00:     user: undefined,
+2026-04-12 04:15:11 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:15:11 +00:00:     max_tokens: 8192,
+2026-04-12 04:15:11 +00:00:     temperature: 0.18,
+2026-04-12 04:15:11 +00:00:     top_p: undefined,
+2026-04-12 04:15:11 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:15:11 +00:00:     presence_penalty: undefined,
+2026-04-12 04:15:11 +00:00:     seed: undefined,
+2026-04-12 04:15:11 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:15:11 +00:00:     tools: undefined,
+2026-04-12 04:15:11 +00:00:     tool_choice: undefined,
+2026-04-12 04:15:11 +00:00:     stream: true,
+2026-04-12 04:15:11 +00:00:     stream_options: undefined
+2026-04-12 04:15:11 +00:00:   },
+2026-04-12 04:15:11 +00:00:   statusCode: 400,
+2026-04-12 04:15:11 +00:00:   responseHeaders: {
+2026-04-12 04:15:11 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:15:11 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:15:11 +00:00:     'cf-ray': '9eaf688efb7d073d-IAD',
+2026-04-12 04:15:11 +00:00:     connection: 'keep-alive',
+2026-04-12 04:15:11 +00:00:     'content-type': 'application/json',
+2026-04-12 04:15:11 +00:00:     date: 'Sun, 12 Apr 2026 04:15:11 GMT',
+2026-04-12 04:15:11 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:15:11 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:15:11 +00:00:     server: 'cloudflare',
+2026-04-12 04:15:11 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:15:11 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:15:11 +00:00:   },
+2026-04-12 04:15:11 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:15:11 +00:00:   cause: undefined,
+2026-04-12 04:15:11 +00:00:   isRetryable: false,
+2026-04-12 04:15:11 +00:00:   data: undefined
+2026-04-12 04:15:11 +00:00: }
+2026-04-12 04:15:11 +00:00: [CodexMC] Model failed: qwen/qwen-2.5-coder-32b-instruct:free P [AI_APICallError]: Not Found
+2026-04-12 04:15:11 +00:00:     at tj.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:63466)
+2026-04-12 04:15:11 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:15:11 +00:00:     at async ee (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:3247)
+2026-04-12 04:15:11 +00:00:     at async tP.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:3:67351)
+2026-04-12 04:15:11 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:24044)
+2026-04-12 04:15:11 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485
+2026-04-12 04:15:11 +00:00:     at async aj (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:3023)
+2026-04-12 04:15:11 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:23183)
+2026-04-12 04:15:11 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:28538)
+2026-04-12 04:15:11 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/chat/route.js:20:4485 {
+2026-04-12 04:15:11 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:15:11 +00:00:   requestBodyValues: {
+2026-04-12 04:15:11 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:15:11 +00:00:     logit_bias: undefined,
+2026-04-12 04:15:11 +00:00:     logprobs: undefined,
+2026-04-12 04:15:11 +00:00:     top_logprobs: undefined,
+2026-04-12 04:15:11 +00:00:     user: undefined,
+2026-04-12 04:15:11 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:15:11 +00:00:     max_tokens: 8192,
+2026-04-12 04:15:11 +00:00:     temperature: 0.18,
+2026-04-12 04:15:11 +00:00:     top_p: undefined,
+2026-04-12 04:15:11 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:15:11 +00:00:     presence_penalty: undefined,
+2026-04-12 04:15:11 +00:00:     seed: undefined,
+2026-04-12 04:15:11 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:15:11 +00:00:     tools: undefined,
+2026-04-12 04:15:11 +00:00:     tool_choice: undefined,
+2026-04-12 04:15:11 +00:00:     stream: true,
+2026-04-12 04:15:11 +00:00:     stream_options: undefined
+2026-04-12 04:15:11 +00:00:   },
+2026-04-12 04:15:11 +00:00:   statusCode: 404,
+2026-04-12 04:15:11 +00:00:   responseHeaders: {
+2026-04-12 04:15:11 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:15:11 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:15:11 +00:00:     'cf-ray': '9eaf688fcdbac587-IAD',
+2026-04-12 04:15:11 +00:00:     connection: 'keep-alive',
+2026-04-12 04:15:11 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:15:11 +00:00:     'content-type': 'application/json',
+2026-04-12 04:15:11 +00:00:     date: 'Sun, 12 Apr 2026 04:15:11 GMT',
+2026-04-12 04:15:11 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:15:11 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:15:11 +00:00:     server: 'cloudflare',
+2026-04-12 04:15:11 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:15:11 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:15:11 +00:00:   },
+2026-04-12 04:15:11 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:15:11 +00:00:   cause: undefined,
+2026-04-12 04:15:11 +00:00:   isRetryable: false,
+2026-04-12 04:15:11 +00:00:   data: undefined
+2026-04-12 04:15:11 +00:00: }
+2026-04-12 04:26:01 +00:00: [CodexMC] Model failed: deepseek/deepseek-coder:free a [AI_APICallError]: Bad Request
+2026-04-12 04:26:01 +00:00:     at R.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:5966)
+2026-04-12 04:26:01 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:26:01 +00:00:     at async T (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:3245)
+2026-04-12 04:26:01 +00:00:     at async O.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:9844)
+2026-04-12 04:26:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:33298)
+2026-04-12 04:26:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:26:01 +00:00:     at async tS (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:3023)
+2026-04-12 04:26:01 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:32437)
+2026-04-12 04:26:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:35654)
+2026-04-12 04:26:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982 {
+2026-04-12 04:26:01 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:26:01 +00:00:   requestBodyValues: {
+2026-04-12 04:26:01 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:26:01 +00:00:     logit_bias: undefined,
+2026-04-12 04:26:01 +00:00:     logprobs: undefined,
+2026-04-12 04:26:01 +00:00:     top_logprobs: undefined,
+2026-04-12 04:26:01 +00:00:     user: undefined,
+2026-04-12 04:26:01 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:26:01 +00:00:     max_tokens: 8192,
+2026-04-12 04:26:01 +00:00:     temperature: 0.18,
+2026-04-12 04:26:01 +00:00:     top_p: undefined,
+2026-04-12 04:26:01 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:26:01 +00:00:     presence_penalty: undefined,
+2026-04-12 04:26:01 +00:00:     seed: undefined,
+2026-04-12 04:26:01 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:26:01 +00:00:     tools: undefined,
+2026-04-12 04:26:01 +00:00:     tool_choice: undefined,
+2026-04-12 04:26:01 +00:00:     stream: true,
+2026-04-12 04:26:01 +00:00:     stream_options: undefined
+2026-04-12 04:26:01 +00:00:   },
+2026-04-12 04:26:01 +00:00:   statusCode: 400,
+2026-04-12 04:26:01 +00:00:   responseHeaders: {
+2026-04-12 04:26:01 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:26:01 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:26:01 +00:00:     'cf-ray': '9eaf786cac07394f-IAD',
+2026-04-12 04:26:01 +00:00:     connection: 'keep-alive',
+2026-04-12 04:26:01 +00:00:     'content-type': 'application/json',
+2026-04-12 04:26:01 +00:00:     date: 'Sun, 12 Apr 2026 04:26:01 GMT',
+2026-04-12 04:26:01 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:26:01 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:26:01 +00:00:     server: 'cloudflare',
+2026-04-12 04:26:01 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:26:01 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:26:01 +00:00:   },
+2026-04-12 04:26:01 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:26:01 +00:00:   cause: undefined,
+2026-04-12 04:26:01 +00:00:   isRetryable: false,
+2026-04-12 04:26:01 +00:00:   data: undefined
+2026-04-12 04:26:01 +00:00: }
+2026-04-12 04:26:01 +00:00: [CodexMC] Model failed: qwen/qwen-2.5-coder-32b-instruct:free a [AI_APICallError]: Not Found
+2026-04-12 04:26:01 +00:00:     at R.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:5966)
+2026-04-12 04:26:01 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:26:01 +00:00:     at async T (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:3245)
+2026-04-12 04:26:01 +00:00:     at async O.doStream (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:9844)
+2026-04-12 04:26:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:33298)
+2026-04-12 04:26:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:26:01 +00:00:     at async tS (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:3023)
+2026-04-12 04:26:01 +00:00:     at async n (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:32437)
+2026-04-12 04:26:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:35654)
+2026-04-12 04:26:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982 {
+2026-04-12 04:26:01 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:26:01 +00:00:   requestBodyValues: {
+2026-04-12 04:26:01 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:26:01 +00:00:     logit_bias: undefined,
+2026-04-12 04:26:01 +00:00:     logprobs: undefined,
+2026-04-12 04:26:01 +00:00:     top_logprobs: undefined,
+2026-04-12 04:26:01 +00:00:     user: undefined,
+2026-04-12 04:26:01 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:26:01 +00:00:     max_tokens: 8192,
+2026-04-12 04:26:01 +00:00:     temperature: 0.18,
+2026-04-12 04:26:01 +00:00:     top_p: undefined,
+2026-04-12 04:26:01 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:26:01 +00:00:     presence_penalty: undefined,
+2026-04-12 04:26:01 +00:00:     seed: undefined,
+2026-04-12 04:26:01 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:26:01 +00:00:     tools: undefined,
+2026-04-12 04:26:01 +00:00:     tool_choice: undefined,
+2026-04-12 04:26:01 +00:00:     stream: true,
+2026-04-12 04:26:01 +00:00:     stream_options: undefined
+2026-04-12 04:26:01 +00:00:   },
+2026-04-12 04:26:01 +00:00:   statusCode: 404,
+2026-04-12 04:26:01 +00:00:   responseHeaders: {
+2026-04-12 04:26:01 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:26:01 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:26:01 +00:00:     'cf-ray': '9eaf786dacca58ae-IAD',
+2026-04-12 04:26:01 +00:00:     connection: 'keep-alive',
+2026-04-12 04:26:01 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:26:01 +00:00:     'content-type': 'application/json',
+2026-04-12 04:26:01 +00:00:     date: 'Sun, 12 Apr 2026 04:26:01 GMT',
+2026-04-12 04:26:01 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:26:01 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:26:01 +00:00:     server: 'cloudflare',
+2026-04-12 04:26:01 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:26:01 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:26:01 +00:00:   },
+2026-04-12 04:26:01 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:26:01 +00:00:   cause: undefined,
+2026-04-12 04:26:01 +00:00:   isRetryable: false,
+2026-04-12 04:26:01 +00:00:   data: undefined
+2026-04-12 04:26:01 +00:00: }
+2026-04-12 04:28:45 +00:00: [fix-build-ai] model failed deepseek/deepseek-coder:free a [AI_APICallError]: Bad Request
+2026-04-12 04:28:45 +00:00:     at R.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:5966)
+2026-04-12 04:28:45 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:28:45 +00:00:     at async T (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:3245)
+2026-04-12 04:28:45 +00:00:     at async O.doGenerate (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:9056)
+2026-04-12 04:28:45 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:26248)
+2026-04-12 04:28:45 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:28:45 +00:00:     at async tS (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:3023)
+2026-04-12 04:28:45 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:25416)
+2026-04-12 04:28:45 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:28:45 +00:00:     at async _ (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/build-jar/route.js:27:94) {
+2026-04-12 04:28:45 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:28:45 +00:00:   requestBodyValues: {
+2026-04-12 04:28:45 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:28:45 +00:00:     logit_bias: undefined,
+2026-04-12 04:28:45 +00:00:     logprobs: undefined,
+2026-04-12 04:28:45 +00:00:     top_logprobs: undefined,
+2026-04-12 04:28:45 +00:00:     user: undefined,
+2026-04-12 04:28:45 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:28:45 +00:00:     max_tokens: 16384,
+2026-04-12 04:28:45 +00:00:     temperature: 0.2,
+2026-04-12 04:28:45 +00:00:     top_p: undefined,
+2026-04-12 04:28:45 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:28:45 +00:00:     presence_penalty: undefined,
+2026-04-12 04:28:45 +00:00:     seed: undefined,
+2026-04-12 04:28:45 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:28:45 +00:00:     tools: undefined,
+2026-04-12 04:28:45 +00:00:     tool_choice: undefined
+2026-04-12 04:28:45 +00:00:   },
+2026-04-12 04:28:45 +00:00:   statusCode: 400,
+2026-04-12 04:28:45 +00:00:   responseHeaders: {
+2026-04-12 04:28:45 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:28:45 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:28:45 +00:00:     'cf-ray': '9eaf7c724cf35774-IAD',
+2026-04-12 04:28:45 +00:00:     connection: 'keep-alive',
+2026-04-12 04:28:45 +00:00:     'content-type': 'application/json',
+2026-04-12 04:28:45 +00:00:     date: 'Sun, 12 Apr 2026 04:28:45 GMT',
+2026-04-12 04:28:45 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:28:45 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:28:45 +00:00:     server: 'cloudflare',
+2026-04-12 04:28:45 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:28:45 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:28:45 +00:00:   },
+2026-04-12 04:28:45 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:28:45 +00:00:   cause: undefined,
+2026-04-12 04:28:45 +00:00:   isRetryable: false,
+2026-04-12 04:28:45 +00:00:   data: undefined
+2026-04-12 04:28:45 +00:00: }
+2026-04-12 04:28:45 +00:00: [fix-build-ai] model failed qwen/qwen-2.5-coder-32b-instruct:free a [AI_APICallError]: Not Found
+2026-04-12 04:28:45 +00:00:     at R.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:5966)
+2026-04-12 04:28:45 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:28:45 +00:00:     at async T (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:3245)
+2026-04-12 04:28:45 +00:00:     at async O.doGenerate (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:9056)
+2026-04-12 04:28:45 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:26248)
+2026-04-12 04:28:45 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:28:45 +00:00:     at async tS (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:3023)
+2026-04-12 04:28:45 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:25416)
+2026-04-12 04:28:45 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:28:45 +00:00:     at async _ (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/build-jar/route.js:27:94) {
+2026-04-12 04:28:45 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:28:45 +00:00:   requestBodyValues: {
+2026-04-12 04:28:45 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:28:45 +00:00:     logit_bias: undefined,
+2026-04-12 04:28:45 +00:00:     logprobs: undefined,
+2026-04-12 04:28:45 +00:00:     top_logprobs: undefined,
+2026-04-12 04:28:45 +00:00:     user: undefined,
+2026-04-12 04:28:45 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:28:45 +00:00:     max_tokens: 16384,
+2026-04-12 04:28:45 +00:00:     temperature: 0.2,
+2026-04-12 04:28:45 +00:00:     top_p: undefined,
+2026-04-12 04:28:45 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:28:45 +00:00:     presence_penalty: undefined,
+2026-04-12 04:28:45 +00:00:     seed: undefined,
+2026-04-12 04:28:45 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:28:45 +00:00:     tools: undefined,
+2026-04-12 04:28:45 +00:00:     tool_choice: undefined
+2026-04-12 04:28:45 +00:00:   },
+2026-04-12 04:28:45 +00:00:   statusCode: 404,
+2026-04-12 04:28:45 +00:00:   responseHeaders: {
+2026-04-12 04:28:45 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:28:45 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:28:45 +00:00:     'cf-ray': '9eaf7c732e9de5e8-IAD',
+2026-04-12 04:28:45 +00:00:     connection: 'keep-alive',
+2026-04-12 04:28:45 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:28:45 +00:00:     'content-type': 'application/json',
+2026-04-12 04:28:45 +00:00:     date: 'Sun, 12 Apr 2026 04:28:45 GMT',
+2026-04-12 04:28:45 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:28:45 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:28:45 +00:00:     server: 'cloudflare',
+2026-04-12 04:28:45 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:28:45 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:28:45 +00:00:   },
+2026-04-12 04:28:45 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:28:45 +00:00:   cause: undefined,
+2026-04-12 04:28:45 +00:00:   isRetryable: false,
+2026-04-12 04:28:45 +00:00:   data: undefined
+2026-04-12 04:28:45 +00:00: }
+2026-04-12 04:29:01 +00:00: [fix-build-ai] model failed deepseek/deepseek-coder:free a [AI_APICallError]: Bad Request
+2026-04-12 04:29:01 +00:00:     at R.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:5966)
+2026-04-12 04:29:01 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:29:01 +00:00:     at async T (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:3245)
+2026-04-12 04:29:01 +00:00:     at async O.doGenerate (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:9056)
+2026-04-12 04:29:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:26248)
+2026-04-12 04:29:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:29:01 +00:00:     at async tS (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:3023)
+2026-04-12 04:29:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:25416)
+2026-04-12 04:29:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:29:01 +00:00:     at async _ (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/build-jar/route.js:27:94) {
+2026-04-12 04:29:01 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:29:01 +00:00:   requestBodyValues: {
+2026-04-12 04:29:01 +00:00:     model: 'deepseek/deepseek-coder:free',
+2026-04-12 04:29:01 +00:00:     logit_bias: undefined,
+2026-04-12 04:29:01 +00:00:     logprobs: undefined,
+2026-04-12 04:29:01 +00:00:     top_logprobs: undefined,
+2026-04-12 04:29:01 +00:00:     user: undefined,
+2026-04-12 04:29:01 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:29:01 +00:00:     max_tokens: 16384,
+2026-04-12 04:29:01 +00:00:     temperature: 0.2,
+2026-04-12 04:29:01 +00:00:     top_p: undefined,
+2026-04-12 04:29:01 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:29:01 +00:00:     presence_penalty: undefined,
+2026-04-12 04:29:01 +00:00:     seed: undefined,
+2026-04-12 04:29:01 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:29:01 +00:00:     tools: undefined,
+2026-04-12 04:29:01 +00:00:     tool_choice: undefined
+2026-04-12 04:29:01 +00:00:   },
+2026-04-12 04:29:01 +00:00:   statusCode: 400,
+2026-04-12 04:29:01 +00:00:   responseHeaders: {
+2026-04-12 04:29:01 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:29:01 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:29:01 +00:00:     'cf-ray': '9eaf7cd33d7ec5ce-IAD',
+2026-04-12 04:29:01 +00:00:     connection: 'keep-alive',
+2026-04-12 04:29:01 +00:00:     'content-type': 'application/json',
+2026-04-12 04:29:01 +00:00:     date: 'Sun, 12 Apr 2026 04:29:01 GMT',
+2026-04-12 04:29:01 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:29:01 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:29:01 +00:00:     server: 'cloudflare',
+2026-04-12 04:29:01 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:29:01 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:29:01 +00:00:   },
+2026-04-12 04:29:01 +00:00:   responseBody: '{"error":{"message":"deepseek/deepseek-coder:free is not a valid model ID","code":400},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:29:01 +00:00:   cause: undefined,
+2026-04-12 04:29:01 +00:00:   isRetryable: false,
+2026-04-12 04:29:01 +00:00:   data: undefined
+2026-04-12 04:29:01 +00:00: }
+2026-04-12 04:29:01 +00:00: [fix-build-ai] model failed qwen/qwen-2.5-coder-32b-instruct:free a [AI_APICallError]: Not Found
+2026-04-12 04:29:01 +00:00:     at R.errorSchema (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:5966)
+2026-04-12 04:29:01 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-04-12 04:29:01 +00:00:     at async T (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:3245)
+2026-04-12 04:29:01 +00:00:     at async O.doGenerate (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:3:9056)
+2026-04-12 04:29:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:26248)
+2026-04-12 04:29:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:29:01 +00:00:     at async tS (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:3023)
+2026-04-12 04:29:01 +00:00:     at async fn (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:25416)
+2026-04-12 04:29:01 +00:00:     at async /home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/chunks/479.js:20:4982
+2026-04-12 04:29:01 +00:00:     at async _ (/home/ubuntu/CascadeProjects/codex/.next/standalone/.next/server/app/api/build-jar/route.js:27:94) {
+2026-04-12 04:29:01 +00:00:   url: 'https://openrouter.ai/api/v1/chat/completions',
+2026-04-12 04:29:01 +00:00:   requestBodyValues: {
+2026-04-12 04:29:01 +00:00:     model: 'qwen/qwen-2.5-coder-32b-instruct:free',
+2026-04-12 04:29:01 +00:00:     logit_bias: undefined,
+2026-04-12 04:29:01 +00:00:     logprobs: undefined,
+2026-04-12 04:29:01 +00:00:     top_logprobs: undefined,
+2026-04-12 04:29:01 +00:00:     user: undefined,
+2026-04-12 04:29:01 +00:00:     parallel_tool_calls: undefined,
+2026-04-12 04:29:01 +00:00:     max_tokens: 16384,
+2026-04-12 04:29:01 +00:00:     temperature: 0.2,
+2026-04-12 04:29:01 +00:00:     top_p: undefined,
+2026-04-12 04:29:01 +00:00:     frequency_penalty: undefined,
+2026-04-12 04:29:01 +00:00:     presence_penalty: undefined,
+2026-04-12 04:29:01 +00:00:     seed: undefined,
+2026-04-12 04:29:01 +00:00:     messages: [ [Object], [Object] ],
+2026-04-12 04:29:01 +00:00:     tools: undefined,
+2026-04-12 04:29:01 +00:00:     tool_choice: undefined
+2026-04-12 04:29:01 +00:00:   },
+2026-04-12 04:29:01 +00:00:   statusCode: 404,
+2026-04-12 04:29:01 +00:00:   responseHeaders: {
+2026-04-12 04:29:01 +00:00:     'access-control-allow-origin': '*',
+2026-04-12 04:29:01 +00:00:     'access-control-expose-headers': 'X-Generation-Id,cf-ray',
+2026-04-12 04:29:01 +00:00:     'cf-ray': '9eaf7cd5abe42290-IAD',
+2026-04-12 04:29:01 +00:00:     connection: 'keep-alive',
+2026-04-12 04:29:01 +00:00:     'content-encoding': 'gzip',
+2026-04-12 04:29:01 +00:00:     'content-type': 'application/json',
+2026-04-12 04:29:01 +00:00:     date: 'Sun, 12 Apr 2026 04:29:01 GMT',
+2026-04-12 04:29:01 +00:00:     'permissions-policy': 'payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")',
+2026-04-12 04:29:01 +00:00:     'referrer-policy': 'no-referrer, strict-origin-when-cross-origin',
+2026-04-12 04:29:01 +00:00:     server: 'cloudflare',
+2026-04-12 04:29:01 +00:00:     'transfer-encoding': 'chunked',
+2026-04-12 04:29:01 +00:00:     'x-content-type-options': 'nosniff'
+2026-04-12 04:29:01 +00:00:   },
+2026-04-12 04:29:01 +00:00:   responseBody: '{"error":{"message":"No endpoints found for qwen/qwen-2.5-coder-32b-instruct:free.","code":404},"user_id":"user_348AwkgWKoOJRvk38DfFqfUYIso"}',
+2026-04-12 04:29:01 +00:00:   cause: undefined,
+2026-04-12 04:29:01 +00:00:   isRetryable: false,
+2026-04-12 04:29:01 +00:00:   data: undefined
+2026-04-12 04:29:01 +00:00: }
